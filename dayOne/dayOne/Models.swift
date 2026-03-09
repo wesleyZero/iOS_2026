@@ -7,7 +7,7 @@
 
 
 
-struct WorkoutDay {
+struct WorkoutDay: Identifiable {
     let name: String
     var exercises: [Exercise]
 }
@@ -27,7 +27,7 @@ struct Exercise {
 }
 
 struct LoggedSet {
-    let weight: Double
-    let reps: Int
+    var weight: Double
+    var reps: Int
 }
 
