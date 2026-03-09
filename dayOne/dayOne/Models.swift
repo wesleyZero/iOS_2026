@@ -4,10 +4,10 @@
 //
 //  Created by Wesley James on 3/6/26.
 
-
-
+import Foundation
 
 struct WorkoutDay: Identifiable {
+    let id = UUID()
     let name: String
     var exercises: [Exercise]
 }
