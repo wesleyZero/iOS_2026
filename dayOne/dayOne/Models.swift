@@ -13,8 +13,8 @@ struct WorkoutDay: Identifiable {
 }
 
 struct Exercise {
-    var sets: [LoggedSet]
     var name: String
+    var sets: [LoggedSet]
 
     var volume: Double {
         var total = 0.0
