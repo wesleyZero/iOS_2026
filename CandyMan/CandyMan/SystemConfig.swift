@@ -18,17 +18,14 @@ struct MoldSpec {
         self.count = count
         self.volume_ml = volume_ml
     }
-
 }
-
-
 
 @Observable
 class SystemConfig{
-    var bear = MoldSpec(.bear, 22, 2.339)
-    var star = MoldSpec(.star, 22, 2.211)
-    var cloud = MoldSpec(.cloud, 22, 2.182)
-    var circle = MoldSpec(.circle, 22, 2.292)
+    var bear = MoldSpec(.bear, 69, 2.339)
+    var star = MoldSpec(.star, 67, 2.211)
+    var cloud = MoldSpec(.cloud, 420, 2.182)
+    var circle = MoldSpec(.circle, 88, 2.292)
 
     func setSpec(_ spec: MoldSpec, for shape: GummyShape) {
         switch shape {
@@ -47,5 +44,4 @@ class SystemConfig{
         case .circle: return circle
         }
     }
-
 }
