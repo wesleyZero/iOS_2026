@@ -21,7 +21,7 @@ class BatchConfigViewModel {
     var selectedShape: GummyShape = .bear
     var trayCount: Int = 1
     var activeConcentration: Double = 10.0
-    let units: ConcentrationUnit = .mg
+    var units: ConcentrationUnit = .mg
 }
 
 //create a class for the tray sizes? because I will want to have a way for the user to modify the volume?

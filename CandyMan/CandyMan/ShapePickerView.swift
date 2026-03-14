@@ -19,27 +19,57 @@ struct ShapePickerView: View {
 
     var body : some View {
         @Bindable var viewModel = viewModel
-        HStack {
-            Text("Shape")
-                .font(.headline)
-            Spacer()
-            Text("\(systemConfig.spec(for: viewModel.selectedShape).volume_ml, specifier: "%.2f") ml")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
+
         VStack{
-            // CHOOSE YOUR SHAPE
-            shapeGrid
+            chooseShape
 
-            // CHOOSE NUMBER OF TRAYS
-            Stepper("Trays: \(viewModel.trayCount)", value: $viewModel.trayCount, in: 1...10)
-                .padding(.horizontal, 24)
-
+            chooseTrays
+            
             // CHOOSE CONCENTRATION
             Stepper("Concentration: \(viewModel.activeConcentration, specifier: "%.1f") \(viewModel.units.rawValue)", value: $viewModel.activeConcentration, in: 0...1000, step: 5)
                 .padding(.horizontal, 24)
+
+
+
+
+            // CHOOSE UNITS
+            HStack() {
+                Text("Units")
+                Spacer()
+                Picker("Units", selection: $viewModel.units) {
+                    ForEach(ConcentrationUnit.allCases) { unit in
+                        Text(unit.rawValue).tag(unit)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 24)
+            }
         }
         .navigationTitle("Gummy Batch")
+    }
+
+    private var chooseTrays: some View  {
+        @Bindable var viewModel = viewModel
+
+            // CHOOSE NUMBER OF TRAYS
+        return Stepper("Trays: \(viewModel.trayCount)", value: $viewModel.trayCount, in: 1...10)
+                .padding(.horizontal, 24)
+    }
+
+
+
+    private var chooseShape: some View {
+        VStack{
+            HStack {
+                Text("Shape")
+                    .font(.headline)
+                Spacer()
+                Text("\(systemConfig.spec(for: viewModel.selectedShape).volume_ml, specifier: "%.2f") ml")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        shapeGrid
+        }
     }
 
     private var shapeGrid: some View {
@@ -49,6 +79,15 @@ struct ShapePickerView: View {
             }
         }
         .padding(24)
+    }
+
+    private var unitPicker: some View {
+        @Bindable var viewModel = viewModel
+        return Picker("Units", selection: $viewModel.units) {
+            ForEach(ConcentrationUnit.allCases) { unit in
+                Text(unit.rawValue).tag(unit)
+            }
+        }
     }
 
     private func shapeButton(for shape: GummyShape) -> some View {
@@ -76,3 +115,18 @@ struct ShapePickerView: View {
 }
 
 
+struct CardStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .background(Color(.systemGray6))
+            .cornerRadius(16)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+    }
+}
+
+extension View {
+    func cardStyle() -> some View {
+        modifier(CardStyle())
+    }
+}
