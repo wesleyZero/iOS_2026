@@ -24,6 +24,15 @@ enum GummyShape: String, CaseIterable, Identifiable {
 
         }
     }
+
+//    var volumeML: Double {
+//        switch self {
+//        case .bear: return 2.33
+//        case .star: return 2.5
+//        case .cloud: return 4.0
+//        case .circle: return 2.0
+//        }
+//    }
 }
 
 

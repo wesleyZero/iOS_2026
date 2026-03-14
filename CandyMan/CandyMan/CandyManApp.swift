@@ -9,9 +9,14 @@ import SwiftUI
 
 @main
 struct CandyManApp: App {
+    @State private var viewModel = BatchConfigViewModel()
+    @State private var systemConfig = SystemConfig()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(viewModel)
+                .environment(systemConfig)
         }
     }
 }
