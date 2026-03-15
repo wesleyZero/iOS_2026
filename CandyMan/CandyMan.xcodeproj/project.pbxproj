@@ -6,7 +6,12 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D91074EF2F67301F00B1639F /* MeasurementCalculationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91074EE2F67301F00B1639F /* MeasurementCalculationsView.swift */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
+		D91074EE2F67301F00B1639F /* MeasurementCalculationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementCalculationsView.swift; sourceTree = "<group>"; };
 		D968D8042F64AEED00C70E6D /* CandyMan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CandyMan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -34,6 +39,7 @@
 			children = (
 				D968D8062F64AEED00C70E6D /* CandyMan */,
 				D968D8052F64AEED00C70E6D /* Products */,
+				D91074EE2F67301F00B1639F /* MeasurementCalculationsView.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -120,6 +126,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D91074EF2F67301F00B1639F /* MeasurementCalculationsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

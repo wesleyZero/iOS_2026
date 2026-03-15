@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 @main
 struct CandyManApp: App {
@@ -18,5 +19,6 @@ struct CandyManApp: App {
                 .environment(viewModel)
                 .environment(systemConfig)
         }
+        .modelContainer(for: SavedBatch.self)
     }
 }

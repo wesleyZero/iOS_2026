@@ -17,11 +17,25 @@ enum SubstanceDensity: Double {
     case gelatin            = 1.270
     case citricAcid         = 1.665
     case potassiumSorbate   = 1.360
-    case flavorOil          = 0.910
+    case flavorOil          = 1.001 //= 0.910
     case foodColoring       = 1.050
-    case terpenes           = 0.860
+    case terpenes           = 1.002
 
     var gPerML: Double { rawValue }
+}
+
+// MARK: - Substance Solubility (g per 100 mL water at ~20C)
+
+enum SubstanceSolubility: Double {
+    case citricAcid         = 59.0
+    case potassiumSorbate   = 58.2
+    case sucrose            = 200.0
+
+    var gPer100mL: Double { rawValue }
+
+    func minWaterML(toDissolveGrams mass: Double) -> Double {
+        (mass / gPer100mL) * 100.0
+    }
 }
 
 // MARK: - Units

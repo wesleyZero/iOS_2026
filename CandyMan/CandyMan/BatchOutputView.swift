@@ -1,10 +1,3 @@
-//
-//  BatchOutputView.swift
-//  CandyMan
-//
-//  Created by Wesley James on 3/13/26.
-//
-
 import SwiftUI
 
 struct BatchOutputView: View {
@@ -12,131 +5,156 @@ struct BatchOutputView: View {
     @Environment(SystemConfig.self) private var systemConfig
 
     var body: some View {
+        let result = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
         VStack(spacing: 0) {
-            sectionHeader
+            HStack {
+                Text("Batch Output").font(.headline)
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(String(format: "%.1f mL (with overage)", result.vMix))
+                        .font(.subheadline).foregroundStyle(.secondary)
+                    Text(String(format: "%.1f mL (target)", result.vBase))
+                        .font(.caption).foregroundStyle(.tertiary)
+                }
+            }.padding(.horizontal, 16).padding(.vertical, 12)
 
-            // ── ACTIVE MIX ───────────────────────────
-            groupHeader("Active Mix")
-
-            outputRow(label: "Citric Acid", value: 0.000, unit: "g")
-            outputRow(label: "Potassium Sorbate", value: 0.000, unit: "g")
-            outputRow(label: "Activation Water", value: 0.000, unit: "g")
-
+            activationMixSection(result.activationMix)
             spacerLine
+            mixSection(result.gelatinMix)
+            spacerLine
+            mixSection(result.sugarMix)
+            spacerLine
+            activesSection
+            Spacer().frame(height: 8)
+        }
+    }
 
-            // Colors
-            let sortedColors = Array(viewModel.selectedColors.keys).sorted { $0.rawValue < $1.rawValue }
-            ForEach(sortedColors, id: \.id) { color in
-                HStack {
-                    Circle()
-                        .fill(color.swiftUIColor)
-                        .frame(width: 10, height: 10)
-                    Text("\(color.rawValue) Color")
-                        .font(.system(size: 14, design: .monospaced))
+    private func mixSection(_ mix: MixGroup) -> some View {
+        VStack(spacing: 0) {
+            HStack { Text(mix.name).font(.subheadline).fontWeight(.semibold); Spacer() }
+                .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+            ForEach(mix.components) { comp in componentRow(comp) }
+        }
+    }
+
+    private func activationMixSection(_ mix: MixGroup) -> some View {
+        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+        return VStack(spacing: 0) {
+            HStack { Text(mix.name).font(.subheadline).fontWeight(.semibold); Spacer() }
+                .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+
+            ForEach(orderedCategories, id: \.rawValue) { category in
+                let items = mix.components.filter { $0.activationCategory == category }
+                if !items.isEmpty {
+                    HStack {
+                        Text(category.rawValue)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 2)
+                    ForEach(items) { comp in componentRow(comp) }
+                }
+            }
+        }
+    }
+
+    private func componentRow(_ comp: BatchComponent) -> some View {
+        let colorMatch = GummyColor.allCases.first { "\($0.rawValue) Color" == comp.label }
+        return HStack(spacing: 6) {
+            if let color = colorMatch {
+                Circle().fill(color.swiftUIColor).frame(width: 10, height: 10)
+            }
+            Text(comp.label).font(.system(size: 13, design: .monospaced)).lineLimit(1)
+            Spacer()
+            if comp.displayUnit == "µL" {
+                Text(String(format: "%.0f %@", comp.volume_mL * 1000.0, comp.displayUnit))
+                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
+            } else if comp.displayUnit == "g" {
+                Text(String(format: "%.3f %@", comp.mass_g, comp.displayUnit))
+                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
+            } else {
+                Text(String(format: "%.3f %@", comp.volume_mL, comp.displayUnit))
+                    .font(.system(size: 13, design: .monospaced)).foregroundStyle(.secondary)
+            }
+        }.padding(.horizontal, 20).padding(.vertical, 3)
+    }
+
+    private var activesSection: some View {
+        @Bindable var viewModel = viewModel
+        let spec = systemConfig.spec(for: viewModel.selectedShape)
+        let totalWells = spec.count * viewModel.trayCount
+        let totalActive = viewModel.activeConcentration * Double(totalWells)
+        let unitLabel = viewModel.units.rawValue
+
+        return VStack(spacing: 0) {
+            HStack {
+                Text("Actives").font(.subheadline).fontWeight(.semibold)
+                Spacer()
+            }
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+
+            HStack(spacing: 6) {
+                Text(viewModel.selectedActive.rawValue)
+                    .font(.system(size: 13, design: .monospaced))
+                    .lineLimit(1)
+                Spacer()
+                Text(String(format: "%.2f %@", totalActive, unitLabel))
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20).padding(.vertical, 3)
+
+            if viewModel.selectedActive == .LSD {
+                Divider().padding(.horizontal, 20).padding(.vertical, 6)
+
+                // Input row: ug per tab
+                HStack(spacing: 6) {
+                    Text("ug / tab")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
                     Spacer()
-                    Text("0.000 ml")
-                        .font(.system(size: 14, design: .monospaced))
+                    TextField("100", value: $viewModel.lsdUgPerTab,
+                              format: .number.precision(.fractionLength(0...1)))
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .font(.system(size: 13, design: .monospaced))
+                        .frame(width: 70)
+                    Text("µg")
+                        .font(.system(size: 13, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 3)
-            }
+                .padding(.horizontal, 20).padding(.vertical, 3)
 
-            if !sortedColors.isEmpty { spacerLine }
+                // Calculated tabs + microdose remainder
+                let tabsNeeded = Int(totalActive / viewModel.lsdUgPerTab)
+                let microdoseRemainder = totalActive - (Double(tabsNeeded) * viewModel.lsdUgPerTab)
 
-            // Terpenes
-            let terpenes = Array(viewModel.selectedFlavors.keys.filter {
-                if case .terpene = $0 { return true }; return false
-            })
-            ForEach(terpenes, id: \.id) { flavor in
-                outputRow(label: "\(flavor.displayName) Terpene", value: 0, unit: "µL", intFormat: true)
-            }
+                HStack(spacing: 6) {
+                    Text("Tabs needed")
+                        .font(.system(size: 13, design: .monospaced))
+                    Spacer()
+                    Text("\(tabsNeeded) tabs")
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20).padding(.vertical, 3)
 
-            // Flavor Oils
-            let oils = Array(viewModel.selectedFlavors.keys.filter {
-                if case .oil = $0 { return true }; return false
-            })
-            ForEach(oils, id: \.id) { flavor in
-                outputRow(label: "\(flavor.displayName) Oil", value: 0.000, unit: "ml")
-            }
-
-            if !terpenes.isEmpty || !oils.isEmpty { spacerLine }
-
-            // ── GELATIN MIX ──────────────────────────
-            groupHeader("Gelatin Mix")
-
-            outputRow(label: "Gelatin", value: 0.000, unit: "g")
-            outputRow(label: "Water", value: 0.000, unit: "ml")
-
-            spacerLine
-
-            // ── SUGAR MIX ────────────────────────────
-            groupHeader("Sugar Mix")
-
-            outputRow(label: "Glucose Syrup", value: 0.000, unit: "g")
-            outputRow(label: "Granulated Sugar", value: 0.000, unit: "g")
-            outputRow(label: "Water", value: 0.000, unit: "g")
-
-            Spacer().frame(height: 12)
-        }
-    }
-
-    // MARK: - Header
-
-    private var sectionHeader: some View {
-        HStack {
-            Text("Batch Output")
-                .font(.headline)
-            Spacer()
-            Text("placeholder")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-
-    // MARK: - Group Header
-
-    private func groupHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.subheadline)
-                .fontWeight(.semibold)
-                .foregroundStyle(.primary)
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 4)
-    }
-
-    // MARK: - Output Row
-
-    private func outputRow(label: String, value: Double, unit: String, intFormat: Bool = false) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 14, design: .monospaced))
-            Spacer()
-            if intFormat {
-                Text(String(format: "%03.0f %@", value, unit))
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(String(format: "%.3f %@", value, unit))
-                    .font(.system(size: 14, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    Text("Microdose extra")
+                        .font(.system(size: 13, design: .monospaced))
+                    Spacer()
+                    Text(String(format: "%.2f µg", microdoseRemainder))
+                        .font(.system(size: 13, design: .monospaced))
+                        .foregroundStyle(microdoseRemainder < 1.0 ? .green : .orange)
+                }
+                .padding(.horizontal, 20).padding(.vertical, 3)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 3)
     }
-
-    // MARK: - Spacer Line
 
     private var spacerLine: some View {
-        Divider()
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
+        Divider().padding(.horizontal, 20).padding(.vertical, 8)
     }
 }
