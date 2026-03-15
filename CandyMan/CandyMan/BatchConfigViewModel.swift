@@ -8,8 +8,6 @@
 import Foundation
 import SwiftUI
 
-
-
 @Observable
 class BatchConfigViewModel {
     var selectedShape: GummyShape = .bear
@@ -22,16 +20,26 @@ class BatchConfigViewModel {
     }
     var units: ConcentrationUnit = .ug
     var gelatinPercentage: Double = 8.0
+
     func totalVolume(using systemConfig: SystemConfig) -> Double {
         systemConfig.spec(for: selectedShape).volume_ml * Double(trayCount)
     }
 
+    // MARK: - Overage (stored as factor, displayed as %)
+
+    var overageFactor: Double = 1.03
+
+    var overagePercent: Double {
+        get { (overageFactor - 1.0) * 100.0 }
+        set { overageFactor = 1.0 + (newValue / 100.0) }
+    }
+
+    // MARK: - Flavors
+
     var selectedFlavors: [FlavorSelection: Double] = [:]
-    // value = proportion 0-100, all selected flavors should sum to 100
     var flavorsLocked: Bool = false
     var flavorSourceTab: FlavorSourceType = .terpenes
     var waterRatioGelatinToSugar: Double = 75/65
-    var overageFactor: Double = 1.03
 
     var terpeneVolumePPM: Double = 1000.0
     var flavorOilVolumePercent: Double = 1.0
@@ -85,7 +93,51 @@ class BatchConfigViewModel {
     func unlockComposition() {
         flavorCompositionLocked = false
     }
+
+    // MARK: - Colors
+
+    var selectedColors: [GummyColor: Double] = [:]
+    var colorsLocked: Bool = false
+    var colorVolumePercent: Double = 0.5
+    var colorCompositionLocked: Bool = false
+
+    func toggleColor(_ color: GummyColor) {
+        guard !colorsLocked else { return }
+        if selectedColors[color] != nil {
+            selectedColors.removeValue(forKey: color)
+        } else {
+            selectedColors[color] = 0.0
+        }
+    }
+
+    func isColorSelected(_ color: GummyColor) -> Bool {
+        selectedColors[color] != nil
+    }
+
+    func lockColors() {
+        guard !selectedColors.isEmpty else { return }
+        let even = 100.0 / Double(selectedColors.count)
+        for key in selectedColors.keys {
+            selectedColors[key] = even
+        }
+        colorsLocked = true
+    }
+
+    func unlockColors() {
+        colorsLocked = false
+        colorCompositionLocked = false
+    }
+
+    var colorBlendTotal: Double {
+        selectedColors.values.reduce(0, +)
+    }
+
+    func lockColorComposition() {
+        guard abs(colorBlendTotal - 100) < 0.5 else { return }
+        colorCompositionLocked = true
+    }
+
+    func unlockColorComposition() {
+        colorCompositionLocked = false
+    }
 }
-
-//create a class for the tray sizes? because I will want to have a way for the user to modify the volume?
-

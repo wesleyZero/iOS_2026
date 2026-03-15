@@ -6,6 +6,25 @@
 //
 
 import Foundation
+import SwiftUI
+
+// MARK: - Substance Densities (g/mL)
+
+enum SubstanceDensity: Double {
+    case water              = 1.000
+    case glucoseSyrup       = 1.450
+    case sucrose            = 1.587
+    case gelatin            = 1.270
+    case citricAcid         = 1.665
+    case potassiumSorbate   = 1.360
+    case flavorOil          = 0.910
+    case foodColoring       = 1.050
+    case terpenes           = 0.860
+
+    var gPerML: Double { rawValue }
+}
+
+// MARK: - Units
 
 enum ConcentrationUnit: String, CaseIterable, Identifiable {
     case ug = "ug"
@@ -14,6 +33,8 @@ enum ConcentrationUnit: String, CaseIterable, Identifiable {
 
     var id: String { self.rawValue }
 }
+
+// MARK: - Shapes
 
 enum GummyShape: String, CaseIterable, Identifiable {
     case bear = "Bear"
@@ -32,6 +53,8 @@ enum GummyShape: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - Actives
 
 enum Active: String, CaseIterable, Identifiable {
     case MDMA = "MDMA"
@@ -52,6 +75,32 @@ enum Active: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - Colors
+
+enum GummyColor: String, CaseIterable, Identifiable {
+    case coral = "Coral"
+    case green = "Green"
+    case red = "Red"
+    case yellow = "Yellow"
+    case blue = "Blue"
+    case plum = "Plum"
+
+    var id: String { rawValue }
+
+    var swiftUIColor: Color {
+        switch self {
+        case .coral:  return Color(red: 1.0, green: 0.45, blue: 0.35)
+        case .green:  return Color(red: 0.2, green: 0.78, blue: 0.35)
+        case .red:    return Color(red: 0.9, green: 0.15, blue: 0.18)
+        case .yellow: return Color(red: 0.95, green: 0.82, blue: 0.2)
+        case .blue:   return Color(red: 0.2, green: 0.5, blue: 0.95)
+        case .plum:   return Color(red: 0.55, green: 0.2, blue: 0.6)
+        }
+    }
+}
+
+// MARK: - Terpene Flavors
 
 enum TerpeneFlavor: String, CaseIterable, Identifiable {
     case almondJoy        = "Almond Joy"
@@ -122,7 +171,6 @@ enum FlavorOil: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-
 enum FlavorSelection: Hashable, Identifiable {
     case terpene(TerpeneFlavor)
     case oil(FlavorOil)
@@ -149,10 +197,9 @@ enum FlavorSelection: Hashable, Identifiable {
     }
 }
 
-
 enum FlavorSourceType: String, CaseIterable, Identifiable {
     case terpenes  = "Terpenes"
     case oils      = "Flavor Oils"
-    
+
     var id: String { rawValue }
 }
