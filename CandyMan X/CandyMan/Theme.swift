@@ -1669,116 +1669,10 @@ private enum NumericFormatting {
     }
 }
 
-// MARK: - String-Buffered Numeric TextField (UIKit-backed)
-//
-// Uses UIViewRepresentable to wrap UITextField directly, bypassing the
-// SwiftUI TextField layout bug that produces "Invalid frame dimension"
-// errors and invalidates the text input session when using Apple Pencil
-// on the software keyboard.
-
-#if canImport(UIKit)
-
-// MARK: Shared UIKit TextField Representable
-
-/// UIKit-backed text field that handles Apple Pencil input correctly.
-/// SwiftUI's TextField can produce invalid frame dimensions during
-/// pencil-driven keyboard input, which severs the RTIInputSystemClient
-/// session. This wrapper avoids that by owning the UITextField directly.
-private struct _UINumericTextField: UIViewRepresentable {
-    var text: Binding<String>
-    var placeholder: String
-    var font: UIFont
-    var textColor: UIColor
-    var textAlignment: NSTextAlignment
-    var keyboardType: UIKeyboardType
-    var onBeginEditing: () -> Void
-    var onEndEditing: () -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-
-    func makeUIView(context: Context) -> UITextField {
-        let tf = UITextField()
-        tf.delegate = context.coordinator
-        tf.font = font
-        tf.textColor = textColor
-        tf.textAlignment = textAlignment
-        tf.keyboardType = keyboardType
-        tf.autocorrectionType = .no
-        tf.spellCheckingType = .no
-        tf.smartQuotesType = .no
-        tf.smartDashesType = .no
-        tf.smartInsertDeleteType = .no
-        tf.borderStyle = .none
-        tf.backgroundColor = .clear
-        tf.attributedPlaceholder = NSAttributedString(
-            string: placeholder,
-            attributes: [.foregroundColor: UIColor.tertiaryLabel, .font: font]
-        )
-        // Prevent SwiftUI from computing intrinsic size as zero/negative
-        tf.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        tf.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return tf
-    }
-
-    func updateUIView(_ tf: UITextField, context: Context) {
-        // Only update text when the field is NOT being edited to avoid
-        // fighting the user's input.
-        if !tf.isFirstResponder {
-            tf.text = text.wrappedValue
-        }
-        tf.placeholder = placeholder
-        tf.font = font
-        tf.textColor = textColor
-        tf.textAlignment = textAlignment
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        var parent: _UINumericTextField
-
-        init(parent: _UINumericTextField) { self.parent = parent }
-
-        func textFieldDidBeginEditing(_ textField: UITextField) {
-            parent.onBeginEditing()
-            // Select all on focus (matches previous behavior)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                textField.selectAll(nil)
-            }
-        }
-
-        func textFieldDidEndEditing(_ textField: UITextField) {
-            parent.text.wrappedValue = textField.text ?? ""
-            parent.onEndEditing()
-        }
-
-        func textField(_ textField: UITextField, shouldChangeCharactersIn range: NSRange, replacementString string: String) -> Bool {
-            // Allow only digits and decimal point
-            let allowed = CharacterSet(charactersIn: "0123456789.")
-            if string.isEmpty { // backspace
-                return true
-            }
-            guard string.unicodeScalars.allSatisfy({ allowed.contains($0) }) else {
-                return false
-            }
-            // Prevent multiple decimal points
-            if string.contains("."), let current = textField.text, current.contains(".") {
-                return false
-            }
-            // Update binding immediately so SwiftUI state tracks the text
-            let current = textField.text ?? ""
-            if let textRange = Range(range, in: current) {
-                let updated = current.replacingCharacters(in: textRange, with: string)
-                parent.text.wrappedValue = updated
-            }
-            return true
-        }
-    }
-}
-
-#endif
+// MARK: - String-Buffered Numeric TextField
 
 /// A text field for numeric input that avoids SwiftUI's real-time format coercion bugs.
-/// Uses a UIKit UITextField on iOS to prevent Apple Pencil keyboard dismissal.
-/// Commits the parsed value only on focus loss.
+/// Uses a string buffer internally and only commits the parsed value on focus loss.
 struct NumericField: View {
     @Binding var value: Double
     var decimals: Int = 3
@@ -1787,56 +1681,24 @@ struct NumericField: View {
     var isFocusedBinding: Binding<Bool> = .constant(false)
 
     @State private var text: String = ""
-    @State private var isEditing: Bool = false
-
-    var body: some View {
-        #if canImport(UIKit)
-        _UINumericTextField(
-            text: $text,
-            placeholder: placeholder ?? NumericFormatting.placeholder(decimals: decimals),
-            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular),
-            textColor: UIColor.secondaryLabel,
-            textAlignment: .right,
-            keyboardType: .decimalPad,
-            onBeginEditing: {
-                isEditing = true
-                isFocusedBinding.wrappedValue = true
-                text = NumericFormatting.editing(value, decimals: decimals)
-            },
-            onEndEditing: {
-                isEditing = false
-                isFocusedBinding.wrappedValue = false
-                var t = Transaction()
-                t.disablesAnimations = true
-                withTransaction(t) {
-                    if let parsed = Double(text) { value = parsed }
-                    text = NumericFormatting.display(value, decimals: decimals)
-                }
-            }
-        )
-        .onAppear { text = NumericFormatting.display(value, decimals: decimals) }
-        .onChange(of: value) { _, newVal in
-            if !isEditing { text = NumericFormatting.display(newVal, decimals: decimals) }
-        }
-        #else
-        // macOS fallback: use SwiftUI TextField
-        macOSNumericField
-        #endif
-    }
-
-    #if !canImport(UIKit)
     @FocusState private var isFocused: Bool
 
-    private var macOSNumericField: some View {
+    var body: some View {
         TextField(placeholder ?? NumericFormatting.placeholder(decimals: decimals), text: $text)
+            .keyboardType(.decimalPad)
             .focused($isFocused)
             .onChange(of: isFocused) { _, focused in
                 isFocusedBinding.wrappedValue = focused
                 if focused {
                     text = NumericFormatting.editing(value, decimals: decimals)
+                    NumericFormatting.selectAll()
                 } else {
-                    if let parsed = Double(text) { value = parsed }
-                    text = NumericFormatting.display(value, decimals: decimals)
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) {
+                        if let parsed = Double(text) { value = parsed }
+                        text = NumericFormatting.display(value, decimals: decimals)
+                    }
                 }
             }
             .onAppear { text = NumericFormatting.display(value, decimals: decimals) }
@@ -1844,7 +1706,6 @@ struct NumericField: View {
                 if !isFocused { text = NumericFormatting.display(newVal, decimals: decimals) }
             }
     }
-    #endif
 }
 
 /// Optional-Double variant for fields bound to `Double?` (nil = empty field).
@@ -1854,60 +1715,27 @@ struct OptionalNumericField: View {
     var placeholder: String? = nil
 
     @State private var text: String = ""
-    @State private var isEditing: Bool = false
-
-    var body: some View {
-        #if canImport(UIKit)
-        _UINumericTextField(
-            text: $text,
-            placeholder: placeholder ?? NumericFormatting.placeholder(decimals: decimals),
-            font: .monospacedDigitSystemFont(ofSize: 12, weight: .regular),
-            textColor: UIColor.secondaryLabel,
-            textAlignment: .right,
-            keyboardType: .decimalPad,
-            onBeginEditing: {
-                isEditing = true
-                text = value.map { NumericFormatting.editing($0, decimals: decimals) } ?? ""
-            },
-            onEndEditing: {
-                isEditing = false
-                var t = Transaction()
-                t.disablesAnimations = true
-                withTransaction(t) {
-                    if text.trimmingCharacters(in: .whitespaces).isEmpty {
-                        value = nil
-                    } else if let parsed = Double(text) {
-                        value = parsed
-                    }
-                    text = value.map { NumericFormatting.display($0, decimals: decimals) } ?? ""
-                }
-            }
-        )
-        .onAppear { text = value.map { NumericFormatting.display($0, decimals: decimals) } ?? "" }
-        .onChange(of: value) { _, newVal in
-            if !isEditing { text = newVal.map { NumericFormatting.display($0, decimals: decimals) } ?? "" }
-        }
-        #else
-        macOSOptionalNumericField
-        #endif
-    }
-
-    #if !canImport(UIKit)
     @FocusState private var isFocused: Bool
 
-    private var macOSOptionalNumericField: some View {
+    var body: some View {
         TextField(placeholder ?? NumericFormatting.placeholder(decimals: decimals), text: $text)
+            .keyboardType(.decimalPad)
             .focused($isFocused)
             .onChange(of: isFocused) { _, focused in
                 if focused {
                     text = value.map { NumericFormatting.editing($0, decimals: decimals) } ?? ""
+                    NumericFormatting.selectAll()
                 } else {
-                    if text.trimmingCharacters(in: .whitespaces).isEmpty {
-                        value = nil
-                    } else if let parsed = Double(text) {
-                        value = parsed
+                    var t = Transaction()
+                    t.disablesAnimations = true
+                    withTransaction(t) {
+                        if text.trimmingCharacters(in: .whitespaces).isEmpty {
+                            value = nil
+                        } else if let parsed = Double(text) {
+                            value = parsed
+                        }
+                        text = value.map { NumericFormatting.display($0, decimals: decimals) } ?? ""
                     }
-                    text = value.map { NumericFormatting.display($0, decimals: decimals) } ?? ""
                 }
             }
             .onAppear { text = value.map { NumericFormatting.display($0, decimals: decimals) } ?? "" }
@@ -1915,7 +1743,6 @@ struct OptionalNumericField: View {
                 if !isFocused { text = newVal.map { NumericFormatting.display($0, decimals: decimals) } ?? "" }
             }
     }
-    #endif
 }
 
 // MARK: - Keyboard Dismiss Toolbar
