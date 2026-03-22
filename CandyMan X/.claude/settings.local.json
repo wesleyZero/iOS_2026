@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find \"/Users/wesleyjohanson/Documents/Code/iOS/ios_2026/CandyMan X\" -name \"*.swift\" -type f -exec ls -lh {})",
+      "Bash(sort -k2)",
+      "Bash(find \"/Users/wesleyjohanson/Documents/Code/iOS/ios_2026/CandyMan X\" -name \"*.swift\" -type f -exec wc -l {} +)"
+    ]
+  }
+}

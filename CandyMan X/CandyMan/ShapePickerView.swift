@@ -704,9 +704,18 @@ struct ShapePickerView: View {
                 .font(.subheadline).fontWeight(.semibold)
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
-            LazyVGrid(columns: shapeColumns, spacing: 12) {
-                ForEach(GummyShape.allCases) { shape in shapeButton(for: shape) }
-            }.padding(12)
+            if isRegular {
+                LazyVGrid(columns: shapeColumns, spacing: 12) {
+                    ForEach(GummyShape.allCases) { shape in shapeButton(for: shape) }
+                }.padding(12)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHGrid(rows: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                        ForEach(GummyShape.allCases) { shape in shapeButton(for: shape) }
+                    }
+                    .padding(12)
+                }
+            }
         }
     }
 
@@ -855,7 +864,9 @@ struct ShapePickerView: View {
                 Text(shape.rawValue).font(.subheadline).fontWeight(.medium)
             }
             .foregroundStyle(sel ? AnyShapeStyle(.clear) : AnyShapeStyle(CMTheme.textSecondary))
-            .frame(maxWidth: .infinity, minHeight: 90)
+            .frame(minHeight: 90)
+            .frame(maxWidth: isRegular ? .infinity : nil)
+            .frame(width: isRegular ? nil : 140)
             .padding(.vertical, 16)
             .background(
                 RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)

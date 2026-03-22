@@ -735,11 +735,49 @@ private class SpringState {
     }
 }
 
+/// A single ghost afterimage left behind by the slider thumb.
+private struct SliderGhost: Identifiable {
+    let id: UInt64
+    let x: CGFloat          // center X position in the track coordinate space
+    let spawnTime: Date     // when this ghost was created
+}
+
+/// Shamanic gradient spectrum: deep indigo → purple → magenta → orange → golden yellow.
+/// Maps a normalised age (0 = newest, 1 = oldest) to a color along the spectrum.
+private func shamanicColor(age t: Double) -> Color {
+    // Spectrum stops — positions mapped to (r, g, b)
+    let stops: [(pos: Double, r: Double, g: Double, b: Double)] = [
+        (0.00, 0.08, 0.02, 0.30),  // deep indigo / near-black purple
+        (0.20, 0.30, 0.00, 0.55),  // dark purple
+        (0.40, 0.70, 0.00, 0.50),  // magenta
+        (0.60, 0.90, 0.15, 0.25),  // hot rose / red-magenta
+        (0.80, 1.00, 0.50, 0.00),  // orange
+        (1.00, 1.00, 0.85, 0.00),  // golden yellow
+    ]
+    let clamped = min(max(t, 0), 1)
+    // Find surrounding stops
+    var lo = stops.first!
+    var hi = stops.last!
+    for i in 0..<(stops.count - 1) {
+        if clamped >= stops[i].pos && clamped <= stops[i + 1].pos {
+            lo = stops[i]; hi = stops[i + 1]; break
+        }
+    }
+    let segLen = hi.pos - lo.pos
+    let f = segLen > 0 ? (clamped - lo.pos) / segLen : 0
+    return Color(
+        red:   lo.r + (hi.r - lo.r) * f,
+        green: lo.g + (hi.g - lo.g) * f,
+        blue:  lo.b + (hi.b - lo.b) * f
+    )
+}
+
 /// A custom slider that visually tracks the finger at full resolution for
 /// smooth movement, but commits the bound `value` at the given `step` size
 /// (default 5%). On release the critically-damped spring animates the thumb
-/// from the raw finger position to the nearest snap increment. Psychedelic
-/// tracer afterimages trail the thumb and dissolve over ~0.6 s.
+/// from the raw finger position to the nearest snap increment. While dragging,
+/// shamanic tracer afterimages are left at historical thumb positions, coloured
+/// along a deep-indigo → golden-yellow gradient and fading out over time.
 struct WeightedSlider: View {
     @Binding var value: Double
     var range: ClosedRange<Double> = 0...100
@@ -747,6 +785,8 @@ struct WeightedSlider: View {
     var tint: Color = CMTheme.textPrimary
     var showLabel: Bool = true
     var onChanged: ((Double) -> Void)? = nil
+
+    @Environment(SystemConfig.self) private var systemConfig
 
     /// Manual spring that we tick each frame — gives us the real position.
     @State private var spring = SpringState()
@@ -762,20 +802,17 @@ struct WeightedSlider: View {
     @State private var labelScaleAtRelease: Double = 1.0
     /// Current label scale factor (1.0 = rest, up to 3.0).
     @State private var labelScale: Double = 1.0
-    /// Chromatic aberration: px offset of the R/B channels from the thumb center.
-    /// Positive = moving right (red leads, blue trails), negative = moving left.
-    @State private var aberrationOffset: CGFloat = 0
     /// The previous thumb X position — used to compute per-frame velocity.
     @State private var prevThumbX: CGFloat = .nan
     /// Whether the timeline should tick.
     @State private var timelineActive = false
     /// Last timeline tick date for computing delta-time.
     @State private var lastTickDate: Date? = nil
+    /// Monotonically increasing ID for ghost instances.
+    @State private var ghostIDCounter: UInt64 = 0
+    /// Active ghost afterimages.
+    @State private var ghosts: [SliderGhost] = []
 
-    /// Maximum aberration offset in points.
-    private let maxAberration: CGFloat = 12
-    /// RC discharge τ for aberration decay (~99% settled in 0.25s).
-    private static let tauAberration: Double = 0.25 / -log(0.01)  // ≈ 0.0543 s
 
     private func snap(_ raw: Double) -> Double {
         guard step > 0 else { return raw }
@@ -839,30 +876,25 @@ struct WeightedSlider: View {
                         .fill(tint)
                         .frame(width: max(0, thumbX), height: trackHeight)
 
-                    // Chromatic aberration: R/G/B circles offset horizontally.
-                    // When aberrationOffset ≈ 0 the three merge into white.
-                    let abOff = aberrationOffset
-                    let abAbs = abs(abOff)
-                    let abOpacity = min(Double(abAbs) / 3.0, 0.7)
-
-                    // Red channel — leads in the direction of motion
-                    if abAbs > 0.5 {
-                        Circle()
-                            .fill(Color.red)
-                            .opacity(abOpacity)
-                            .frame(width: thumbSize, height: thumbSize)
-                            .blur(radius: 1 + abAbs * 0.15)
-                            .position(x: thumbX + abOff, y: geo.size.height / 2)
-                            .allowsHitTesting(false)
-
-                        // Blue channel — trails opposite to motion
-                        Circle()
-                            .fill(Color.blue)
-                            .opacity(abOpacity)
-                            .frame(width: thumbSize, height: thumbSize)
-                            .blur(radius: 1 + abAbs * 0.15)
-                            .position(x: thumbX - abOff, y: geo.size.height / 2)
-                            .allowsHitTesting(false)
+                    // Shamanic tracer ghost trail: gradient-coloured afterimages at
+                    // historical positions that fade and blur with age.
+                    if systemConfig.doubleVisionEnabled {
+                        let fadeTime = max(systemConfig.doubleVisionFadeTime, 0.05)
+                        ForEach(ghosts) { ghost in
+                            let age = now.timeIntervalSince(ghost.spawnTime)
+                            let life = min(max(1.0 - age / fadeTime, 0), 1)
+                            let ageFrac = 1.0 - life  // 0 = newest, 1 = oldest
+                            if life > 0 {
+                                Circle()
+                                    .fill(shamanicColor(age: ageFrac))
+                                    .opacity(life * life * 0.8)  // quadratic fade — lingers then drops
+                                    .frame(width: thumbSize + CGFloat(ageFrac) * CGFloat(systemConfig.doubleVisionIntensity) * 2,
+                                           height: thumbSize + CGFloat(ageFrac) * CGFloat(systemConfig.doubleVisionIntensity) * 2)
+                                    .blur(radius: 1 + CGFloat(ageFrac) * CGFloat(systemConfig.doubleVisionIntensity) * 3)
+                                    .position(x: ghost.x, y: geo.size.height / 2)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                     }
 
                     // Thumb (green/white center — always present)
@@ -950,13 +982,28 @@ struct WeightedSlider: View {
                             let clamped = min(max(rawFraction, 0), 1)
                             let rawValue = range.lowerBound + clamped * (range.upperBound - range.lowerBound)
 
-                            // Chromatic aberration — proportional to drag velocity
+                            // Shamanic tracer — spawn a ghost at the current thumb position.
+                            // Ghosts stay where they were born (no velocity offset) so the
+                            // trail is a series of stacked afterimages like shamanic tracers.
                             let newX = thumbSize / 2 + usableWidth * clamped
-                            if !prevThumbX.isNaN {
-                                let dx = newX - prevThumbX
-                                // Scale velocity into aberration (clamped to max)
-                                let raw = dx * 0.6
-                                aberrationOffset = max(-maxAberration, min(raw, maxAberration))
+                            if systemConfig.doubleVisionEnabled {
+                                // Only spawn if the thumb moved enough (> 1 pt) to avoid
+                                // flooding stationary positions with overlapping ghosts.
+                                let moved = prevThumbX.isNaN ? true : abs(newX - prevThumbX) > 1.0
+                                if moved {
+                                    let ghost = SliderGhost(
+                                        id: ghostIDCounter,
+                                        x: newX,
+                                        spawnTime: .now
+                                    )
+                                    ghostIDCounter += 1
+                                    ghosts.append(ghost)
+                                    // Cap trail length
+                                    let maxCount = max(systemConfig.doubleVisionTrailCount, 3)
+                                    if ghosts.count > maxCount {
+                                        ghosts.removeFirst(ghosts.count - maxCount)
+                                    }
+                                }
                             }
                             prevThumbX = newX
 
@@ -1005,12 +1052,9 @@ struct WeightedSlider: View {
                     // Update render fraction
                     renderFraction = spring.position
 
-                    // Decay chromatic aberration when not dragging (RC discharge)
-                    if !isDragging && abs(aberrationOffset) > 0.1 {
-                        aberrationOffset *= CGFloat(exp(-dt / Self.tauAberration))
-                    } else if !isDragging {
-                        aberrationOffset = 0
-                    }
+                    // Prune expired ghosts
+                    let fadeTime = max(systemConfig.doubleVisionFadeTime, 0.05)
+                    ghosts.removeAll { newDate.timeIntervalSince($0.spawnTime) > fadeTime }
 
                     // Update label scale — grows while dragging, decays back to 1 on release.
                     // Growth uses e^(-1/x); decay uses the mirror: 1 - e^(-1/x).
@@ -1032,7 +1076,7 @@ struct WeightedSlider: View {
                     }
 
                     // Check if we can stop ticking
-                    if spring.isSettled && !isDragging && abs(aberrationOffset) < 0.1 && labelScale <= 1.001 {
+                    if spring.isSettled && !isDragging && ghosts.isEmpty && labelScale <= 1.001 {
                         spring.settle()
                         renderFraction = spring.target
                         timelineActive = false
@@ -1490,78 +1534,199 @@ extension View {
     }
 }
 
-// MARK: - Scribble (Apple Pencil Handwriting) Removal
+// MARK: - Floating Numeric Keypad
+//
+// Custom keypad that replaces the system decimalPad keyboard entirely.
+// Built from pure SwiftUI buttons — no UITextField, no system keyboard,
+// no TextInputUI.  Apple Pencil works flawlessly.
 
-#if canImport(UIKit)
-/// Strips UIScribbleInteraction from ALL UITextFields globally, before the
-/// pencil ever touches them. Runs once at launch and observes keyboard show
-/// to re-strip any that iOS re-adds.
-/// Helper class for the keyboard dismiss toolbar action target.
-private final class KeyboardDismissHelper: NSObject {
-    static let shared = KeyboardDismissHelper()
-    @objc func dismissKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+/// A custom floating keypad that mimics the system decimalPad appearance.
+struct FloatingNumericKeypad: View {
+    @Binding var text: String
+    var accentColor: Color = CMTheme.defaultAccent
+    var cancelColor: Color = CMTheme.danger
+    var onDone: () -> Void
+    var onCancel: (() -> Void)? = nil
+
+    private let keys: [[KeypadKey]] = [
+        [.digit("1"), .digit("2"), .digit("3")],
+        [.digit("4"), .digit("5"), .digit("6")],
+        [.digit("7"), .digit("8"), .digit("9")],
+        [.decimal,    .digit("0"), .backspace  ]
+    ]
+
+    private enum KeypadKey: Hashable {
+        case digit(String)
+        case decimal
+        case backspace
+
+        var label: String {
+            switch self {
+            case .digit(let d): return d
+            case .decimal: return "."
+            case .backspace: return "⌫"
+            }
+        }
+
+        var subtitle: String? {
+            switch self {
+            case .digit("2"): return "ABC"
+            case .digit("3"): return "DEF"
+            case .digit("4"): return "GHI"
+            case .digit("5"): return "JKL"
+            case .digit("6"): return "MNO"
+            case .digit("7"): return "PQRS"
+            case .digit("8"): return "TUV"
+            case .digit("9"): return "WXYZ"
+            default: return nil
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                if onCancel != nil {
+                    Button("Cancel") { onCancel?() }
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(cancelColor)
+                        .frame(width: 60, alignment: .leading)
+                } else {
+                    Spacer().frame(width: 60)
+                }
+                Spacer()
+                Text(text.isEmpty ? "0" : text)
+                    .font(.system(size: 20, weight: .medium, design: .monospaced))
+                    .foregroundStyle(text.isEmpty ? .white.opacity(0.3) : .white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Spacer()
+                Button("Done") { onDone() }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(accentColor)
+                    .frame(width: 60, alignment: .trailing)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+
+            Rectangle()
+                .fill(.white.opacity(0.08))
+                .frame(height: 0.5)
+
+            VStack(spacing: 8) {
+                ForEach(keys, id: \.self) { row in
+                    HStack(spacing: 8) {
+                        ForEach(row, id: \.self) { key in
+                            keyButton(for: key)
+                        }
+                    }
+                }
+            }
+            .padding(12)
+        }
+        .frame(width: 280)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(red: 0.17, green: 0.17, blue: 0.19))
+                .shadow(color: .black.opacity(0.5), radius: 20, y: 10)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 0.5)
+        )
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder
+    private func keyButton(for key: KeypadKey) -> some View {
+        Button {
+            handleTap(key)
+        } label: {
+            VStack(spacing: 1) {
+                switch key {
+                case .backspace:
+                    Image(systemName: "delete.backward")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                case .decimal:
+                    Text(key.label)
+                        .font(.system(size: 24, weight: .regular))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                default:
+                    Text(key.label)
+                        .font(.system(size: 24, weight: .regular))
+                        .foregroundStyle(.white)
+                    if let sub = key.subtitle {
+                        Text(sub)
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.45))
+                            .tracking(1.5)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .contentShape(Rectangle())
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(keyBackground(for: key))
+            )
+        }
+        .buttonStyle(KeypadPressStyle())
+    }
+
+    private func keyBackground(for key: KeypadKey) -> Color {
+        switch key {
+        case .decimal, .backspace: return .clear
+        default: return Color(red: 0.25, green: 0.25, blue: 0.28)
+        }
+    }
+
+    private func handleTap(_ key: KeypadKey) {
+        switch key {
+        case .backspace:
+            if !text.isEmpty { text.removeLast() }
+        case .decimal:
+            if !text.contains(".") { text.append(".") }
+        case .digit(let d):
+            text.append(d)
+        }
     }
 }
 
+/// Button style that dims on press for tactile keypad feedback.
+private struct KeypadPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.5 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Scribble (Apple Pencil Handwriting) Suppression
+
+#if canImport(UIKit)
+/// Prevents Apple Pencil Scribble (handwriting recognition) from activating on
+/// text fields, while keeping the `UIScribbleInteraction` objects intact.
+///
+/// Uses a delegate-proxy approach: each `UIScribbleInteraction` is replaced
+/// with one whose delegate returns `false` from `shouldBeginAt:`.  The
+/// interaction stays attached so UIKit's input session management is stable.
+///
+/// NOTE: No `inputAccessoryView` is set on UITextFields.  The keyboard dismiss
+/// button is provided solely by SwiftUI's `.toolbar(.keyboard)` via the
+/// `KeyboardDismissToolbar` view modifier.  The previous UIKit accessory view
+/// caused Apple Pencil taps on on-screen keyboard keys to be intercepted by
+/// the accessory button's hit area, dismissing the keyboard mid-typing.
 enum ScribbleKiller {
     private static var installed = false
-    /// Creates a new accessory view placed above the keyboard with a dismiss button at top-right.
-    /// Each text field gets its own instance so the view stays properly attached.
-    static func makeDismissToolbar() -> UIView {
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: 36))
-        container.backgroundColor = .clear
-
-        let button = UIButton(type: .system)
-        let config = UIImage.SymbolConfiguration(pointSize: 16, weight: .semibold)
-        button.setImage(UIImage(systemName: "chevron.down.circle")?.withConfiguration(config), for: .normal)
-        button.tintColor = UIColor(red: 0.753, green: 0.027, blue: 0.027, alpha: 1)
-        button.addTarget(KeyboardDismissHelper.shared, action: #selector(KeyboardDismissHelper.dismissKeyboard), for: .touchUpInside)
-
-        button.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(button)
-        NSLayoutConstraint.activate([
-            button.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            button.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            button.widthAnchor.constraint(equalToConstant: 36),
-            button.heightAnchor.constraint(equalToConstant: 36)
-        ])
-        return container
-    }
 
     static func install() {
         guard !installed else { return }
         installed = true
-
-        // Pre-configure text fields when they appear in the view hierarchy
-        // by swizzling didMoveToWindow. This attaches the dismiss toolbar
-        // and strips scribble BEFORE editing begins, avoiding the
-        // reloadInputViews() call during editing that causes the keyboard
-        // to dismiss on iPad with Apple Pencil.
         swizzleTextFieldDidMoveToWindow()
-
-        // When editing begins, strip scribble as a safety net but do NOT
-        // call reloadInputViews() — the accessory view is already set.
-        NotificationCenter.default.addObserver(
-            forName: UITextField.textDidBeginEditingNotification,
-            object: nil,
-            queue: .main
-        ) { note in
-            guard let tf = note.object as? UITextField else { return }
-            stripScribble(from: tf)
-        }
-
-        // Also strip when any window's scene becomes active, catching fields
-        // that existed before any editing began.
-        NotificationCenter.default.addObserver(
-            forName: UIScene.didActivateNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                stripAllTextFields()
-            }
-        }
     }
 
     // MARK: - Swizzle UITextField.didMoveToWindow
@@ -1582,56 +1747,66 @@ enum ScribbleKiller {
         method_exchangeImplementations(originalMethod, swizzledMethod)
     }
 
-    static func stripScribble(from tf: UITextField) {
-        var toRemove: [UIInteraction] = []
+    /// Replace the system `UIScribbleInteraction` with one whose delegate
+    /// blocks handwriting.  Skips the swap if the field is first responder.
+    static func disableScribble(on tf: UITextField) {
+        guard !tf.isFirstResponder else { return }
+
         for interaction in tf.interactions {
-            if interaction is UIScribbleInteraction {
-                toRemove.append(interaction)
+            if let scribble = interaction as? UIScribbleInteraction {
+                if scribble.delegate is ScribbleBlockerDelegate { continue }
+                let blocker = ScribbleBlockerDelegate(original: scribble.delegate)
+                objc_setAssociatedObject(tf, &AssociatedKeys.scribbleBlocker, blocker, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+                tf.removeInteraction(scribble)
+                tf.addInteraction(UIScribbleInteraction(delegate: blocker))
             }
         }
-        for interaction in toRemove {
-            tf.removeInteraction(interaction)
-        }
     }
 
-    private static func stripAllTextFields() {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-        for window in scene.windows {
-            stripTextFieldsRecursive(in: window)
-        }
+    private enum AssociatedKeys {
+        nonisolated(unsafe) static var scribbleBlocker: UInt8 = 0
+    }
+}
+
+/// Proxy delegate that blocks Scribble from starting while forwarding all
+/// other delegate calls to the original delegate (if any).
+private final class ScribbleBlockerDelegate: NSObject, UIScribbleInteractionDelegate {
+    weak var original: (any UIScribbleInteractionDelegate)?
+
+    init(original: (any UIScribbleInteractionDelegate)?) {
+        self.original = original
     }
 
-    private static func stripTextFieldsRecursive(in view: UIView) {
-        if let tf = view as? UITextField {
-            stripScribble(from: tf)
-        }
-        for sub in view.subviews {
-            stripTextFieldsRecursive(in: sub)
-        }
+    func scribbleInteraction(_ interaction: UIScribbleInteraction, shouldBeginAt location: CGPoint) -> Bool {
+        return false
+    }
+
+    func scribbleInteractionShouldDelayFocus(_ interaction: UIScribbleInteraction) -> Bool {
+        return original?.scribbleInteractionShouldDelayFocus?(interaction) ?? false
+    }
+
+    func scribbleInteractionWillBeginWriting(_ interaction: UIScribbleInteraction) {
+        original?.scribbleInteractionWillBeginWriting?(interaction)
+    }
+
+    func scribbleInteractionDidFinishWriting(_ interaction: UIScribbleInteraction) {
+        original?.scribbleInteractionDidFinishWriting?(interaction)
     }
 }
 
 extension UITextField {
-    /// Swizzled replacement for `didMoveToWindow`. Strips Scribble interactions
-    /// and attaches the dismiss toolbar as soon as the text field enters the
-    /// view hierarchy, so we never need to call `reloadInputViews()` during
-    /// active editing (which dismisses the keyboard on iPad with Apple Pencil).
+    /// Swizzled `didMoveToWindow`.  Disables Scribble when the text field
+    /// enters the view hierarchy.  Does NOT set `inputAccessoryView`.
     @objc func cm_didMoveToWindow() {
-        // Call the original implementation (swizzled, so this calls the real one).
         cm_didMoveToWindow()
-
         guard self.window != nil else { return }
-        ScribbleKiller.stripScribble(from: self)
-        if self.inputAccessoryView == nil {
-            self.inputAccessoryView = ScribbleKiller.makeDismissToolbar()
-        }
+        ScribbleKiller.disableScribble(on: self)
     }
 }
 #endif
 
 extension View {
-    /// Per-field scribble removal kept for defense-in-depth. The heavy lifting
-    /// is done globally by ScribbleKiller; this catches any edge cases.
+    /// No-op — Scribble is disabled globally via ScribbleKiller delegate proxy.
     func scribbleDisabled() -> some View { self }
 }
 
@@ -1659,25 +1834,271 @@ private enum NumericFormatting {
         return trimmed.hasSuffix(".") ? String(trimmed.dropLast()) : trimmed
     }
 
+    /// Monotonic token incremented on each focus event.  Used to cancel
+    /// a pending select-all when the user starts typing before the delay fires.
+    nonisolated(unsafe) static var selectAllToken: UInt64 = 0
+
     /// Select-all on focus via UIKit (no-op on macOS).
-    static func selectAll() {
+    /// The selection is cancelled if the text field content changes before the
+    /// delay elapses (e.g. the user already began typing with Apple Pencil).
+    static func selectAll(ifTextStill expectedText: String, in textBinding: @escaping () -> String) {
         #if canImport(UIKit)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+        selectAllToken &+= 1
+        let token = selectAllToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard token == selectAllToken,
+                  textBinding() == expectedText else { return }
             UIApplication.shared.sendAction(#selector(UIResponder.selectAll(_:)), to: nil, from: nil, for: nil)
         }
         #endif
     }
 }
 
-// MARK: - String-Buffered Numeric TextField
+// MARK: - Keypad-Based Numeric Fields
+//
+// These replace the old TextField-based numeric fields.  Instead of using the
+// system keyboard (which breaks with Apple Pencil + .decimalPad), they show a
+// custom FloatingNumericKeypad popup on tap.  The public API is identical so
+// all existing call sites compile without changes.
 
-/// A text field for numeric input that avoids SwiftUI's real-time format coercion bugs.
-/// Uses a string buffer internally and only commits the parsed value on focus loss.
+/// Preference key for capturing a view's frame in global coordinates.
+private struct FieldGlobalFrameKey: PreferenceKey {
+    static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
+/// A numeric input field that routes between the custom floating keypad (iPad default)
+/// and the system decimalPad keyboard (iPhone default) based on `SystemConfig.useCustomKeypad`.
 struct NumericField: View {
     @Binding var value: Double
     var decimals: Int = 3
     var placeholder: String? = nil
-    /// External focus binding — use to pause animations while the user is typing.
+    var isFocusedBinding: Binding<Bool> = .constant(false)
+
+    @Environment(SystemConfig.self) private var systemConfig
+
+    var body: some View {
+        if systemConfig.useCustomKeypad {
+            KeypadNumericField(value: $value, decimals: decimals,
+                               placeholder: placeholder, isFocusedBinding: isFocusedBinding)
+        } else {
+            TextFieldNumericField(value: $value, decimals: decimals,
+                                  placeholder: placeholder, isFocusedBinding: isFocusedBinding)
+        }
+    }
+}
+
+/// Optional-Double variant — routes between custom keypad and system keyboard.
+struct OptionalNumericField: View {
+    @Binding var value: Double?
+    var decimals: Int = 3
+    var placeholder: String? = nil
+
+    @Environment(SystemConfig.self) private var systemConfig
+
+    var body: some View {
+        if systemConfig.useCustomKeypad {
+            KeypadOptionalNumericField(value: $value, decimals: decimals, placeholder: placeholder)
+        } else {
+            TextFieldOptionalNumericField(value: $value, decimals: decimals, placeholder: placeholder)
+        }
+    }
+}
+
+// MARK: - Custom Keypad Variants
+
+/// NumericField variant using the floating keypad overlay.
+private struct KeypadNumericField: View {
+    @Binding var value: Double
+    var decimals: Int = 3
+    var placeholder: String? = nil
+    var isFocusedBinding: Binding<Bool> = .constant(false)
+
+    @Environment(SystemConfig.self) private var systemConfig
+    @State private var showKeypad = false
+    @State private var displayText = ""
+    @State private var fieldRect: CGRect = .zero
+
+    #if canImport(UIKit)
+    @State private var keypadState: KeypadState?
+    #endif
+
+    private var placeholderText: String {
+        placeholder ?? NumericFormatting.placeholder(decimals: decimals)
+    }
+
+    private var accent: Color { systemConfig.designKeypadAccent }
+
+    var body: some View {
+        Text(displayText.isEmpty ? placeholderText : displayText)
+            .foregroundStyle(displayText.isEmpty ? CMTheme.textTertiary : CMTheme.textPrimary)
+            .contentShape(Rectangle())
+            .background(GeometryReader { geo in
+                Color.clear.preference(key: FieldGlobalFrameKey.self, value: geo.frame(in: .global))
+            })
+            .onPreferenceChange(FieldGlobalFrameKey.self) { fieldRect = $0 }
+            .onTapGesture { openKeypad() }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(showKeypad ? accent.opacity(0.08) : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(showKeypad ? accent.opacity(0.35) : .clear, lineWidth: 1)
+            )
+            .onAppear { displayText = NumericFormatting.display(value, decimals: decimals) }
+            .onChange(of: value) { _, newVal in
+                if !showKeypad { displayText = NumericFormatting.display(newVal, decimals: decimals) }
+            }
+    }
+
+    private func openKeypad() {
+        guard !showKeypad else { return }
+        showKeypad = true
+        isFocusedBinding.wrappedValue = true
+        #if canImport(UIKit)
+        let state = KeypadOverlayController.shared.show(
+            text: "", sourceRect: fieldRect,
+            accentColor: accent, cancelColor: systemConfig.designAlert
+        ) { commitFromState() } onCancel: { cancelFromState() }
+        self.keypadState = state
+        #endif
+    }
+
+    private func commitFromState() {
+        #if canImport(UIKit)
+        let finalText = keypadState?.text ?? ""
+        #else
+        let finalText = ""
+        #endif
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            if let parsed = Double(finalText) { value = parsed }
+            displayText = NumericFormatting.display(value, decimals: decimals)
+        }
+        showKeypad = false
+        isFocusedBinding.wrappedValue = false
+        #if canImport(UIKit)
+        keypadState = nil
+        #endif
+    }
+
+    private func cancelFromState() {
+        // Restore display text from current value without committing any changes
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            displayText = NumericFormatting.display(value, decimals: decimals)
+        }
+        showKeypad = false
+        isFocusedBinding.wrappedValue = false
+        #if canImport(UIKit)
+        keypadState = nil
+        #endif
+    }
+}
+
+/// OptionalNumericField variant using the floating keypad overlay.
+private struct KeypadOptionalNumericField: View {
+    @Binding var value: Double?
+    var decimals: Int = 3
+    var placeholder: String? = nil
+
+    @Environment(SystemConfig.self) private var systemConfig
+    @State private var showKeypad = false
+    @State private var displayText = ""
+    @State private var fieldRect: CGRect = .zero
+
+    #if canImport(UIKit)
+    @State private var keypadState: KeypadState?
+    #endif
+
+    private var placeholderText: String {
+        placeholder ?? NumericFormatting.placeholder(decimals: decimals)
+    }
+
+    private var accent: Color { systemConfig.designKeypadAccent }
+
+    var body: some View {
+        Text(displayText.isEmpty ? placeholderText : displayText)
+            .foregroundStyle(displayText.isEmpty ? CMTheme.textTertiary : CMTheme.textPrimary)
+            .contentShape(Rectangle())
+            .background(GeometryReader { geo in
+                Color.clear.preference(key: FieldGlobalFrameKey.self, value: geo.frame(in: .global))
+            })
+            .onPreferenceChange(FieldGlobalFrameKey.self) { fieldRect = $0 }
+            .onTapGesture { openKeypad() }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(showKeypad ? accent.opacity(0.08) : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(showKeypad ? accent.opacity(0.35) : .clear, lineWidth: 1)
+            )
+            .onAppear { displayText = value.map { NumericFormatting.display($0, decimals: decimals) } ?? "" }
+            .onChange(of: value) { _, newVal in
+                if !showKeypad { displayText = newVal.map { NumericFormatting.display($0, decimals: decimals) } ?? "" }
+            }
+    }
+
+    private func openKeypad() {
+        guard !showKeypad else { return }
+        showKeypad = true
+        #if canImport(UIKit)
+        let state = KeypadOverlayController.shared.show(
+            text: "", sourceRect: fieldRect,
+            accentColor: accent, cancelColor: systemConfig.designAlert
+        ) { commitFromState() } onCancel: { cancelFromState() }
+        self.keypadState = state
+        #endif
+    }
+
+    private func commitFromState() {
+        #if canImport(UIKit)
+        let finalText = keypadState?.text ?? ""
+        #else
+        let finalText = ""
+        #endif
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            if finalText.trimmingCharacters(in: .whitespaces).isEmpty {
+                value = nil
+            } else if let parsed = Double(finalText) {
+                value = parsed
+            }
+            displayText = value.map { NumericFormatting.display($0, decimals: decimals) } ?? ""
+        }
+        showKeypad = false
+        #if canImport(UIKit)
+        keypadState = nil
+        #endif
+    }
+
+    private func cancelFromState() {
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) {
+            displayText = value.map { NumericFormatting.display($0, decimals: decimals) } ?? ""
+        }
+        showKeypad = false
+        #if canImport(UIKit)
+        keypadState = nil
+        #endif
+    }
+}
+
+// MARK: - System Keyboard Variants
+
+/// NumericField variant using the standard system TextField + .decimalPad keyboard.
+private struct TextFieldNumericField: View {
+    @Binding var value: Double
+    var decimals: Int = 3
+    var placeholder: String? = nil
     var isFocusedBinding: Binding<Bool> = .constant(false)
 
     @State private var text: String = ""
@@ -1691,10 +2112,8 @@ struct NumericField: View {
                 isFocusedBinding.wrappedValue = focused
                 if focused {
                     text = NumericFormatting.editing(value, decimals: decimals)
-                    NumericFormatting.selectAll()
                 } else {
-                    var t = Transaction()
-                    t.disablesAnimations = true
+                    var t = Transaction(); t.disablesAnimations = true
                     withTransaction(t) {
                         if let parsed = Double(text) { value = parsed }
                         text = NumericFormatting.display(value, decimals: decimals)
@@ -1708,8 +2127,8 @@ struct NumericField: View {
     }
 }
 
-/// Optional-Double variant for fields bound to `Double?` (nil = empty field).
-struct OptionalNumericField: View {
+/// OptionalNumericField variant using the standard system TextField + .decimalPad keyboard.
+private struct TextFieldOptionalNumericField: View {
     @Binding var value: Double?
     var decimals: Int = 3
     var placeholder: String? = nil
@@ -1724,10 +2143,8 @@ struct OptionalNumericField: View {
             .onChange(of: isFocused) { _, focused in
                 if focused {
                     text = value.map { NumericFormatting.editing($0, decimals: decimals) } ?? ""
-                    NumericFormatting.selectAll()
                 } else {
-                    var t = Transaction()
-                    t.disablesAnimations = true
+                    var t = Transaction(); t.disablesAnimations = true
                     withTransaction(t) {
                         if text.trimmingCharacters(in: .whitespaces).isEmpty {
                             value = nil
@@ -1745,44 +2162,325 @@ struct OptionalNumericField: View {
     }
 }
 
-// MARK: - Keyboard Dismiss Toolbar
+// MARK: - Keypad Overlay Window
+//
+// SwiftUI overlays are clipped to their parent's hit-test bounds, so a small
+// Text field can't reliably block touches across the whole screen.  Instead we
+// host BOTH the backdrop AND the keypad inside a separate UIWindow that sits
+// above the entire app.  The backdrop area absorbs all taps; the keypad floats
+// centered in the window and works normally.
+
+#if canImport(UIKit)
+/// Observable model shared between the keypad window and the field that opened it.
+@MainActor @Observable
+private final class KeypadState {
+    var text: String = ""
+    var onDone: (() -> Void)?
+    var onCancel: (() -> Void)?
+    /// The tapped field's frame in screen (global) coordinates.
+    var sourceRect: CGRect = .zero
+    /// Accent color for the Done button and field highlight.
+    var accentColor: Color = CMTheme.defaultAccent
+    /// Cancel button color (design language alert color).
+    var cancelColor: Color = CMTheme.danger
+}
+
+/// The SwiftUI view rendered inside the keypad window.
+/// Positions the keypad intelligently relative to the field that opened it.
+private struct KeypadWindowContent: View {
+    @Bindable var state: KeypadState
+
+    /// Approximate keypad dimensions (width is fixed at 280, height ~340).
+    private let keypadWidth: CGFloat = 280
+    private let keypadHeight: CGFloat = 340
+    /// Minimum gap between keypad and field / screen edges.
+    private let margin: CGFloat = 12
+
+    var body: some View {
+        GeometryReader { geo in
+            let pos = keypadPosition(screen: geo.size, safeArea: geo.safeAreaInsets)
+
+            ZStack(alignment: .topLeading) {
+                // Backdrop — absorbs all taps (cancel, don't commit)
+                Color.black.opacity(0.15)
+                    .ignoresSafeArea()
+                    .onTapGesture { state.onCancel?() }
+
+                // Keypad — positioned at the computed location
+                FloatingNumericKeypad(text: $state.text, accentColor: state.accentColor, cancelColor: state.cancelColor) {
+                    state.onDone?()
+                } onCancel: {
+                    state.onCancel?()
+                }
+                .offset(x: pos.x, y: pos.y)
+            }
+        }
+    }
+
+    /// Determines the best (x, y) offset for the keypad's top-leading corner.
+    ///
+    /// Strategy:
+    /// 1. Prefer placing the keypad directly below the field with 8pt gap.
+    /// 2. If not enough room below, place it above the field.
+    /// 3. Horizontally, center on the field — but clamp to screen bounds.
+    private func keypadPosition(screen: CGSize, safeArea: EdgeInsets) -> CGPoint {
+        let field = state.sourceRect
+        let gap: CGFloat = 8
+
+        // --- Vertical ---
+        let spaceBelow = screen.height - field.maxY - safeArea.bottom
+        let spaceAbove = field.minY - safeArea.top
+
+        let y: CGFloat
+        if spaceBelow >= keypadHeight + gap + margin {
+            // Place below the field
+            y = field.maxY + gap
+        } else if spaceAbove >= keypadHeight + gap + margin {
+            // Place above the field
+            y = field.minY - gap - keypadHeight
+        } else {
+            // Not enough room either way — center vertically on screen
+            y = (screen.height - keypadHeight) / 2
+        }
+
+        // --- Horizontal ---
+        // Center keypad on the field's horizontal center, clamped to screen
+        let fieldCenterX = field.midX
+        var x = fieldCenterX - keypadWidth / 2
+        x = max(margin + safeArea.leading, x)
+        x = min(screen.width - keypadWidth - margin - safeArea.trailing, x)
+
+        return CGPoint(x: x, y: y)
+    }
+}
+
+/// Manages a UIWindow that displays the keypad + backdrop above the entire app.
+@MainActor
+private final class KeypadOverlayController {
+    static let shared = KeypadOverlayController()
+
+    private var window: UIWindow?
+    private let state = KeypadState()
+
+    /// Show the keypad with the given initial text, positioned relative to `sourceRect`
+    /// (the tapped field's frame in screen/global coordinates).
+    @discardableResult
+    func show(text: String, sourceRect: CGRect, accentColor: Color = CMTheme.defaultAccent, cancelColor: Color = CMTheme.danger, onDone: @escaping () -> Void, onCancel: (() -> Void)? = nil) -> KeypadState {
+        hide()
+        state.text = text
+        state.sourceRect = sourceRect
+        state.accentColor = accentColor
+        state.cancelColor = cancelColor
+        state.onDone = {
+            onDone()
+            self.hide()
+        }
+        state.onCancel = {
+            onCancel?()
+            self.hide()
+        }
+
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive })
+        else { return state }
+
+        let hostingVC = UIHostingController(rootView: KeypadWindowContent(state: state))
+        hostingVC.view.backgroundColor = .clear
+
+        let w = UIWindow(windowScene: scene)
+        w.windowLevel = .alert - 1
+        w.backgroundColor = .clear
+        w.rootViewController = hostingVC
+        w.isHidden = false
+
+        self.window = w
+        return state
+    }
+
+    func hide() {
+        window?.isHidden = true
+        window?.rootViewController = nil
+        window = nil
+        state.onDone = nil
+        state.onCancel = nil
+    }
+}
+#endif
+
+/// String-bound numeric field — routes between custom keypad and system keyboard.
+struct KeypadStringField: View {
+    @Binding var text: String
+    var placeholder: String = "0.000"
+
+    @Environment(SystemConfig.self) private var systemConfig
+
+    var body: some View {
+        if systemConfig.useCustomKeypad {
+            KeypadStringFieldKeypad(text: $text, placeholder: placeholder)
+        } else {
+            KeypadStringFieldTextField(text: $text, placeholder: placeholder)
+        }
+    }
+}
+
+/// KeypadStringField variant using the floating keypad overlay.
+private struct KeypadStringFieldKeypad: View {
+    @Binding var text: String
+    var placeholder: String = "0.000"
+
+    @Environment(SystemConfig.self) private var systemConfig
+    @State private var showKeypad = false
+    @State private var fieldRect: CGRect = .zero
+
+    #if canImport(UIKit)
+    @State private var keypadState: KeypadState?
+    #endif
+
+    private var accent: Color { systemConfig.designKeypadAccent }
+
+    var body: some View {
+        Text(text.isEmpty ? placeholder : text)
+            .foregroundStyle(text.isEmpty ? CMTheme.textTertiary : CMTheme.textPrimary)
+            .contentShape(Rectangle())
+            .background(GeometryReader { geo in
+                Color.clear.preference(key: FieldGlobalFrameKey.self, value: geo.frame(in: .global))
+            })
+            .onPreferenceChange(FieldGlobalFrameKey.self) { fieldRect = $0 }
+            .onTapGesture { openKeypad() }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(showKeypad ? accent.opacity(0.08) : .clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .strokeBorder(showKeypad ? accent.opacity(0.35) : .clear, lineWidth: 1)
+            )
+    }
+
+    private func openKeypad() {
+        guard !showKeypad else { return }
+        showKeypad = true
+        #if canImport(UIKit)
+        let state = KeypadOverlayController.shared.show(text: "", sourceRect: fieldRect, accentColor: accent, cancelColor: systemConfig.designAlert) {
+            self.commitFromState()
+        } onCancel: {
+            self.cancelFromState()
+        }
+        self.keypadState = state
+        #endif
+    }
+
+    private func commitFromState() {
+        #if canImport(UIKit)
+        let finalText = keypadState?.text ?? ""
+        #else
+        let finalText = ""
+        #endif
+        var t = Transaction(); t.disablesAnimations = true
+        withTransaction(t) { text = finalText }
+        showKeypad = false
+        #if canImport(UIKit)
+        keypadState = nil
+        #endif
+    }
+
+    private func cancelFromState() {
+        // Don't change text — just dismiss
+        showKeypad = false
+        #if canImport(UIKit)
+        keypadState = nil
+        #endif
+    }
+}
+
+/// KeypadStringField variant using the standard system TextField + .decimalPad.
+private struct KeypadStringFieldTextField: View {
+    @Binding var text: String
+    var placeholder: String = "0.000"
+
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .keyboardType(.decimalPad)
+    }
+}
+
+// MARK: - Keyboard Dismiss Button (Floating Overlay)
+//
+// Apple Pencil's broader hit-testing area causes taps on software-keyboard
+// keys to be intercepted by any button placed in `.toolbar(.keyboard)`, in a
+// UIKit `inputAccessoryView`, or even in the lower portion of the content
+// area.  The dismiss button is therefore placed at the **top-trailing**
+// corner of the view — far from the keyboard — and only shown while a
+// keyboard is visible.
+
+#if canImport(UIKit)
+/// Tracks keyboard visibility and frame via UIKit notifications.
+@Observable
+final class KeyboardVisibility {
+    var isVisible = false
+    var keyboardHeight: CGFloat = 0
+
+    init() {
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            self?.isVisible = true
+            if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                self?.keyboardHeight = frame.height
+            }
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.isVisible = false
+            self?.keyboardHeight = 0
+        }
+    }
+}
+#endif
 
 struct KeyboardDismissToolbar: ViewModifier {
-    @Environment(SystemConfig.self) private var systemConfig
+    #if canImport(UIKit)
+    @State private var keyboard = KeyboardVisibility()
+    #endif
 
     func body(content: Content) -> some View {
         #if canImport(UIKit)
         content
-            .toolbar {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    KeyboardDismissButton(accent: systemConfig.designTitle)
+            .overlay(alignment: .bottomTrailing) {
+                if keyboard.isVisible {
+                    Button {
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    } label: {
+                        Image(systemName: "keyboard.chevron.compact.down.fill")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .padding(8)
+                            .background(
+                                Circle()
+                                    .fill(.ultraThinMaterial)
+                                    .shadow(color: .black.opacity(0.4), radius: 6, y: 3)
+                            )
+                    }
+                    .padding(.trailing, 12)
+                    .padding(.bottom, keyboard.keyboardHeight + 8)
+                    .transition(.scale.combined(with: .opacity))
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: keyboard.isVisible)
         #else
         content
         #endif
     }
 }
-
-#if canImport(UIKit)
-private struct KeyboardDismissButton: View {
-    let accent: Color
-    @State private var tapCount = 0
-
-    var body: some View {
-        Button {
-            tapCount += 1
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        } label: {
-            Image(systemName: "chevron.down.circle")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color(red: 0.753, green: 0.027, blue: 0.027))
-                .symbolEffect(.bounce.down, options: .speed(1.5), value: tapCount)
-        }
-    }
-}
-#endif
 
 extension View {
     func keyboardDismissToolbar() -> some View {
