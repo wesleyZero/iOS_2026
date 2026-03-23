@@ -42,20 +42,32 @@ struct BatchValidationView: View {
 
         VStack(spacing: 0) {
             Button {
+                guard viewModel.batchActivated else { return }
                 CMHaptic.light()
                 withAnimation(.cmExpand) { isExpanded.toggle() }
             } label: {
                 HStack {
                     Text("Quantitative Data (Theoretical)").cmSectionTitle(accent: systemConfig.designTitle)
                     Spacer()
-                    CMDisclosureChevron(isExpanded: isExpanded)
+                    if !viewModel.batchActivated {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(systemConfig.designAlert)
+                            Text("Please activate batch")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(systemConfig.designAlert)
+                        }
+                    } else {
+                        CMDisclosureChevron(isExpanded: isExpanded)
+                    }
                 }
                 .contentShape(Rectangle())
                 .padding(.horizontal, 16).padding(.vertical, 12)
             }
             .buttonStyle(.plain)
 
-            if isExpanded {
+            if isExpanded && viewModel.batchActivated {
             ThemedDivider()
 
             // MARK: Target Volumes
@@ -96,23 +108,15 @@ struct BatchValidationView: View {
             Spacer().frame(height: 12)
             } // end if isExpanded
         }
+        .onChange(of: viewModel.batchActivated) { _, activated in
+            if !activated { withAnimation(.cmSpring) { isExpanded = false } }
+        }
     }
 
     // MARK: - Sub-views
 
     private func subsectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .cmSubsectionTitle()
-            Spacer()
-            Text("mass (g)")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-            Text("vol (mL)")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-        }
-        .cmSubsectionPadding()
+        CMTwoColumnSubheader(title: title, col1: "mass (g)", col2: "vol (mL)")
     }
 
     @ViewBuilder
@@ -257,20 +261,32 @@ struct RelativeFractionsView: View {
 
         VStack(spacing: 0) {
             Button {
+                guard viewModel.batchActivated else { return }
                 CMHaptic.light()
                 withAnimation(.cmExpand) { isExpanded.toggle() }
             } label: {
                 HStack {
                     Text("Composition Data (Theoretical)").cmSectionTitle(accent: systemConfig.designTitle)
                     Spacer()
-                    CMDisclosureChevron(isExpanded: isExpanded)
+                    if !viewModel.batchActivated {
+                        HStack(spacing: 4) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(systemConfig.designAlert)
+                            Text("Please activate batch")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(systemConfig.designAlert)
+                        }
+                    } else {
+                        CMDisclosureChevron(isExpanded: isExpanded)
+                    }
                 }
                 .contentShape(Rectangle())
                 .padding(.horizontal, 16).padding(.vertical, 12)
             }
             .buttonStyle(.plain)
 
-            if isExpanded {
+            if isExpanded && viewModel.batchActivated {
             ThemedDivider()
 
             // MARK: Active Mix Components
@@ -312,6 +328,9 @@ struct RelativeFractionsView: View {
             Spacer().frame(height: 12)
             } // end if isExpanded
         }
+        .onChange(of: viewModel.batchActivated) { _, activated in
+            if !activated { withAnimation(.cmSpring) { isExpanded = false } }
+        }
     }
 
     // MARK: - Helpers
@@ -321,33 +340,11 @@ struct RelativeFractionsView: View {
     }
 
     private func customMetricsSubheader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .cmSubsectionTitle()
-            Spacer()
-            Text("mass")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-            Text("vol")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-        }
-        .cmSubsectionPadding()
+        CMTwoColumnSubheader(title: title, col1: "mass", col2: "vol")
     }
 
     private func fracSubheader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .cmSubsectionTitle()
-            Spacer()
-            Text("mass %")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-            Text("vol %")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-        }
-        .cmSubsectionPadding()
+        CMTwoColumnSubheader(title: title, col1: "mass %", col2: "vol %")
     }
 
     @ViewBuilder

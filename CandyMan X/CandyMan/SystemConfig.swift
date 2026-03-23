@@ -126,22 +126,22 @@ struct ScaleSpec: Identifiable, Equatable {
 /// Persists user-modified defaults to UserDefaults and supports factory reset.
 @Observable
 final class SystemConfig {
-    var circle   = MoldSpec(.circle,   35, 2.292)
-    var star     = MoldSpec(.star,     28, 2.211)
-    var heart    = MoldSpec(.heart,    36, 2.500)
-    var cloud    = MoldSpec(.cloud,    36, 2.182)
-    var oldBear  = MoldSpec(.oldBear,  24, 4.600)
-    var newBear  = MoldSpec(.newBear,  35, 3.946)
-    var mushroom = MoldSpec(.mushroom, 15, 3.000)
+    var circle   = MoldSpec(.circle,   35, 5.750)
+    var star     = MoldSpec(.star,     28, 3.200)
+    var heart    = MoldSpec(.heart,    36, 1.700)
+    var cloud    = MoldSpec(.cloud,    36, 5.000)
+    var oldBear  = MoldSpec(.oldBear,  24, 3.600)
+    var newBear  = MoldSpec(.newBear,  35, 4.300)
+    var mushroom = MoldSpec(.mushroom, 15, 4.200)
 
     static let defaultMoldSpecs: [GummyShape: MoldSpec] = [
-        .circle:   MoldSpec(.circle,   35, 2.292),
-        .star:     MoldSpec(.star,     28, 2.211),
-        .heart:    MoldSpec(.heart,    36, 2.500),
-        .cloud:    MoldSpec(.cloud,    36, 2.182),
-        .oldBear:  MoldSpec(.oldBear,  24, 4.600),
-        .newBear:  MoldSpec(.newBear,  35, 3.946),
-        .mushroom: MoldSpec(.mushroom, 15, 3.000),
+        .circle:   MoldSpec(.circle,   35, 5.750),
+        .star:     MoldSpec(.star,     28, 3.200),
+        .heart:    MoldSpec(.heart,    36, 1.700),
+        .cloud:    MoldSpec(.cloud,    36, 5.000),
+        .oldBear:  MoldSpec(.oldBear,  24, 3.600),
+        .newBear:  MoldSpec(.newBear,  35, 4.300),
+        .mushroom: MoldSpec(.mushroom, 15, 4.200),
     ]
 
     func moldVolumeIsDefault(for shape: GummyShape) -> Bool {
@@ -180,6 +180,9 @@ final class SystemConfig {
         loadUserThemes()
         loadContainerTareWeights()
         loadContainers()
+        loadSyringes()
+        loadStirBars()
+        loadTrays()
         loadScales()
         loadDefaultScaleOverrides()
         loadSavedDefaults()
@@ -344,6 +347,323 @@ final class SystemConfig {
         }
     }
 
+    // MARK: - Syringe Containers
+
+    /// Named syringe containers with factory-default tare masses.
+    struct SyringeContainer: Identifiable, Codable, Equatable {
+        var id: String   // dictionary key, e.g. "Syringe 10mL"
+        var name: String // display name
+        var tareWeight: Double // tare mass in grams
+        var tareResolution: Double // resolution of the scale used to measure tare (e.g. 0.001)
+
+        /// Decoded decimal places based on `tareResolution`.
+        var tareDecimalPlaces: Int {
+            if tareResolution >= 1 { return 0 }
+            if tareResolution >= 0.1 { return 1 }
+            if tareResolution >= 0.01 { return 2 }
+            return 3
+        }
+
+        /// Formatted tare weight string respecting the measurement resolution.
+        var formattedTareWeight: String {
+            String(format: "%.\(tareDecimalPlaces)f g", tareWeight)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, tareWeight, tareResolution
+        }
+
+        init(id: String, name: String, tareWeight: Double, tareResolution: Double = 0.001) {
+            self.id = id
+            self.name = name
+            self.tareWeight = tareWeight
+            self.tareResolution = tareResolution
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            tareWeight = try container.decode(Double.self, forKey: .tareWeight)
+            tareResolution = try container.decodeIfPresent(Double.self, forKey: .tareResolution) ?? 0.001
+        }
+
+        static let factoryDefaults: [SyringeContainer] = [
+            SyringeContainer(id: "Syringe 10mL",  name: "Syringe 10mL",  tareWeight: 10.000, tareResolution: 0.001),
+            SyringeContainer(id: "Syringe 20mL",  name: "Syringe 20mL",  tareWeight: 15.000, tareResolution: 0.001),
+            SyringeContainer(id: "Syringe 60mL",  name: "Syringe 60mL",  tareWeight: 30.000, tareResolution: 0.001),
+        ]
+    }
+
+    static let factorySyringes: [SyringeContainer] = SyringeContainer.factoryDefaults
+
+    /// The live, user-editable list of syringes. Persisted to UserDefaults.
+    var syringes: [SyringeContainer] = SyringeContainer.factoryDefaults {
+        didSet { saveSyringes() }
+    }
+
+    private static let syringesKey = "labSyringes"
+
+    func syringeTare(for label: String) -> Double {
+        if let syringe = syringes.first(where: { $0.id == label }) {
+            return syringe.tareWeight
+        }
+        if let factory = Self.factorySyringes.first(where: { $0.id == label }) {
+            return factory.tareWeight
+        }
+        return 0
+    }
+
+    func setSyringeTare(_ value: Double, for label: String) {
+        if let idx = syringes.firstIndex(where: { $0.id == label }) {
+            syringes[idx].tareWeight = value
+        }
+    }
+
+    func resetSyringeTare(for label: String) {
+        if let factory = Self.factorySyringes.first(where: { $0.id == label }),
+           let idx = syringes.firstIndex(where: { $0.id == label }) {
+            syringes[idx].tareWeight = factory.tareWeight
+        }
+    }
+
+    func resetAllSyringeTares() {
+        syringes = Self.factorySyringes
+    }
+
+    /// Whether a syringe's tare has been overridden from its factory default.
+    func syringeTareIsOverridden(for label: String) -> Bool {
+        guard let factory = Self.factorySyringes.first(where: { $0.id == label }) else {
+            return false
+        }
+        if let syringe = syringes.first(where: { $0.id == label }) {
+            return syringe.tareWeight != factory.tareWeight
+        }
+        return false
+    }
+
+    /// Whether a syringe is user-added (not in factory defaults).
+    func syringeIsUserAdded(for label: String) -> Bool {
+        Self.factorySyringes.first(where: { $0.id == label }) == nil
+    }
+
+    private func saveSyringes() {
+        if let data = try? JSONEncoder().encode(syringes) {
+            UserDefaults.standard.set(data, forKey: Self.syringesKey)
+        }
+    }
+
+    private func loadSyringes() {
+        guard let data = UserDefaults.standard.data(forKey: Self.syringesKey),
+              let saved = try? JSONDecoder().decode([SyringeContainer].self, from: data) else { return }
+        syringes = saved
+        if syringes.isEmpty { syringes = Self.factorySyringes }
+    }
+
+    // MARK: - Stir Bars
+
+    /// Named stir bars with factory-default masses.
+    struct StirBar: Identifiable, Codable, Equatable {
+        var id: String
+        var name: String
+        var mass: Double // mass in grams
+        var tareResolution: Double
+
+        var tareDecimalPlaces: Int {
+            if tareResolution >= 1 { return 0 }
+            if tareResolution >= 0.1 { return 1 }
+            if tareResolution >= 0.01 { return 2 }
+            return 3
+        }
+
+        var formattedMass: String {
+            String(format: "%.\(tareDecimalPlaces)f g", mass)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, mass, tareResolution
+        }
+
+        init(id: String, name: String, mass: Double, tareResolution: Double = 0.001) {
+            self.id = id
+            self.name = name
+            self.mass = mass
+            self.tareResolution = tareResolution
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            mass = try container.decode(Double.self, forKey: .mass)
+            tareResolution = try container.decodeIfPresent(Double.self, forKey: .tareResolution) ?? 0.001
+        }
+
+        static let factoryDefaults: [StirBar] = [
+            StirBar(id: "Uncircumcised", name: "Uncircumcised", mass: 6.732, tareResolution: 0.001),
+            StirBar(id: "Circumcised",   name: "Circumcised",   mass: 7.161, tareResolution: 0.001),
+        ]
+    }
+
+    static let factoryStirBars: [StirBar] = StirBar.factoryDefaults
+
+    /// The live, user-editable list of stir bars. Persisted to UserDefaults.
+    var stirBars: [StirBar] = StirBar.factoryDefaults {
+        didSet { saveStirBars() }
+    }
+
+    private static let stirBarsKey = "labStirBars"
+
+    func stirBarMass(for label: String) -> Double {
+        if let bar = stirBars.first(where: { $0.id == label }) {
+            return bar.mass
+        }
+        if let factory = Self.factoryStirBars.first(where: { $0.id == label }) {
+            return factory.mass
+        }
+        return 0
+    }
+
+    func resetAllStirBars() {
+        stirBars = Self.factoryStirBars
+    }
+
+    private func saveStirBars() {
+        if let data = try? JSONEncoder().encode(stirBars) {
+            UserDefaults.standard.set(data, forKey: Self.stirBarsKey)
+        }
+    }
+
+    private func loadStirBars() {
+        guard let data = UserDefaults.standard.data(forKey: Self.stirBarsKey),
+              let saved = try? JSONDecoder().decode([StirBar].self, from: data) else { return }
+        stirBars = saved
+        if stirBars.isEmpty { stirBars = Self.factoryStirBars }
+    }
+
+    // MARK: - Tray Containers
+
+    /// Named tray containers with factory-default tare masses (calibrated tray weights).
+    struct TrayContainer: Identifiable, Codable, Equatable {
+        var id: String   // dictionary key, e.g. "New Bear"
+        var name: String // display name
+        var tareWeight: Double // tare mass in grams
+        var tareResolution: Double // resolution of the scale used to measure tare (e.g. 0.01)
+
+        /// Decoded decimal places based on `tareResolution`.
+        var tareDecimalPlaces: Int {
+            if tareResolution >= 1 { return 0 }
+            if tareResolution >= 0.1 { return 1 }
+            if tareResolution >= 0.01 { return 2 }
+            return 3
+        }
+
+        /// Formatted tare weight string respecting the measurement resolution.
+        var formattedTareWeight: String {
+            String(format: "%.\(tareDecimalPlaces)f g", tareWeight)
+        }
+
+        // Custom Codable to handle migration from saved data without tareResolution
+        enum CodingKeys: String, CodingKey {
+            case id, name, tareWeight, tareResolution
+        }
+
+        init(id: String, name: String, tareWeight: Double, tareResolution: Double = 0.01) {
+            self.id = id
+            self.name = name
+            self.tareWeight = tareWeight
+            self.tareResolution = tareResolution
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            tareWeight = try container.decode(Double.self, forKey: .tareWeight)
+            tareResolution = try container.decodeIfPresent(Double.self, forKey: .tareResolution) ?? 0.01
+        }
+
+        static let factoryDefaults: [TrayContainer] = [
+            TrayContainer(id: "Cloud A",           name: "Cloud A",           tareWeight: 69.90,  tareResolution: 0.01),
+            TrayContainer(id: "Cloud B",           name: "Cloud B",           tareWeight: 68.24,  tareResolution: 0.01),
+            TrayContainer(id: "Star",              name: "Star",              tareWeight: 53.83,  tareResolution: 0.01),
+            TrayContainer(id: "Old Bear",          name: "Old Bear",          tareWeight: 70.36,  tareResolution: 0.01),
+            TrayContainer(id: "Heart",             name: "Heart",             tareWeight: 47.51,  tareResolution: 0.01),
+            TrayContainer(id: "Mushroom A",        name: "Mushroom A",        tareWeight: 68.49,  tareResolution: 0.01),
+            TrayContainer(id: "Mushroom B",        name: "Mushroom B",        tareWeight: 64.35,  tareResolution: 0.01),
+            TrayContainer(id: "Circle Gumdrop A",  name: "Circle Gumdrop A",  tareWeight: 169.64, tareResolution: 0.01),
+            TrayContainer(id: "Circle Gumdrop B",  name: "Circle Gumdrop B",  tareWeight: 182.15, tareResolution: 0.01),
+            TrayContainer(id: "Purple Bear",       name: "Purple Bear",       tareWeight: 74.48,  tareResolution: 0.01),
+            TrayContainer(id: "Blue Bear",         name: "Blue Bear",         tareWeight: 74.61,  tareResolution: 0.01),
+            TrayContainer(id: "Green Bear",        name: "Green Bear",        tareWeight: 74.81,  tareResolution: 0.01),
+        ]
+    }
+
+    static let factoryTrays: [TrayContainer] = TrayContainer.factoryDefaults
+
+    /// The live, user-editable list of trays. Persisted to UserDefaults.
+    var trays: [TrayContainer] = TrayContainer.factoryDefaults {
+        didSet { saveTrays() }
+    }
+
+    private static let traysKey = "labTrays"
+
+    func trayTare(for label: String) -> Double {
+        if let tray = trays.first(where: { $0.id == label }) {
+            return tray.tareWeight
+        }
+        if let factory = Self.factoryTrays.first(where: { $0.id == label }) {
+            return factory.tareWeight
+        }
+        return 0
+    }
+
+    func setTrayTare(_ value: Double, for label: String) {
+        if let idx = trays.firstIndex(where: { $0.id == label }) {
+            trays[idx].tareWeight = value
+        }
+    }
+
+    func resetTrayTare(for label: String) {
+        if let factory = Self.factoryTrays.first(where: { $0.id == label }),
+           let idx = trays.firstIndex(where: { $0.id == label }) {
+            trays[idx].tareWeight = factory.tareWeight
+        }
+    }
+
+    func resetAllTrayTares() {
+        trays = Self.factoryTrays
+    }
+
+    /// Whether a tray's tare has been overridden from its factory default.
+    func trayTareIsOverridden(for label: String) -> Bool {
+        guard let factory = Self.factoryTrays.first(where: { $0.id == label }) else {
+            return false
+        }
+        if let tray = trays.first(where: { $0.id == label }) {
+            return tray.tareWeight != factory.tareWeight
+        }
+        return false
+    }
+
+    /// Whether a tray is user-added (not in factory defaults).
+    func trayIsUserAdded(for label: String) -> Bool {
+        Self.factoryTrays.first(where: { $0.id == label }) == nil
+    }
+
+    private func saveTrays() {
+        if let data = try? JSONEncoder().encode(trays) {
+            UserDefaults.standard.set(data, forKey: Self.traysKey)
+        }
+    }
+
+    private func loadTrays() {
+        guard let data = UserDefaults.standard.data(forKey: Self.traysKey),
+              let saved = try? JSONDecoder().decode([TrayContainer].self, from: data) else { return }
+        trays = saved
+        if trays.isEmpty { trays = Self.factoryTrays }
+    }
+
     // MARK: - Container Tare Weights
 
     /// Named beaker containers with factory-default tare masses.
@@ -351,27 +671,52 @@ final class SystemConfig {
         var id: String   // dictionary key, e.g. "Beaker 5ml"
         var name: String // display name
         var tareWeight: Double // tare mass in grams
+        var tareResolution: Double // resolution of the scale used to measure tare (e.g. 0.001)
+
+        /// Decoded decimal places based on `tareResolution`.
+        var tareDecimalPlaces: Int {
+            if tareResolution >= 1 { return 0 }
+            if tareResolution >= 0.1 { return 1 }
+            if tareResolution >= 0.01 { return 2 }
+            return 3
+        }
+
+        /// Formatted tare weight string respecting the measurement resolution.
+        var formattedTareWeight: String {
+            String(format: "%.\(tareDecimalPlaces)f g", tareWeight)
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case id, name, tareWeight, tareResolution
+        }
+
+        init(id: String, name: String, tareWeight: Double, tareResolution: Double = 0.001) {
+            self.id = id
+            self.name = name
+            self.tareWeight = tareWeight
+            self.tareResolution = tareResolution
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            tareWeight = try container.decode(Double.self, forKey: .tareWeight)
+            tareResolution = try container.decodeIfPresent(Double.self, forKey: .tareResolution) ?? 0.001
+        }
 
         static let factoryDefaults: [BeakerContainer] = [
-            BeakerContainer(id: "Beaker 5ml",   name: "Beaker 5ml",   tareWeight: 6.105),
-            BeakerContainer(id: "Beaker 10ml",  name: "Beaker 10ml",  tareWeight: 8.560),
-            BeakerContainer(id: "Beaker 25ml",  name: "Beaker 25ml",  tareWeight: 20.631),
-            BeakerContainer(id: "Beaker 50ml",  name: "Beaker 50ml",  tareWeight: 29.312),
-            BeakerContainer(id: "Beaker 150ml", name: "Beaker 150ml", tareWeight: 65.358),
-            BeakerContainer(id: "Beaker 250ml", name: "Beaker 250ml", tareWeight: 103.000),
-            BeakerContainer(id: "Beaker 500ml", name: "Beaker 500ml", tareWeight: 161.130),
+            BeakerContainer(id: "Beaker 5ml",   name: "Beaker 5ml",   tareWeight: 6.105,   tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 10ml",  name: "Beaker 10ml",  tareWeight: 8.560,   tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 25ml",  name: "Beaker 25ml",  tareWeight: 20.631,  tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 50ml",  name: "Beaker 50ml",  tareWeight: 29.312,  tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 150ml", name: "Beaker 150ml", tareWeight: 65.358,  tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 250ml", name: "Beaker 250ml", tareWeight: 103.000, tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 500ml", name: "Beaker 500ml", tareWeight: 161.130, tareResolution: 0.001),
         ]
     }
 
-    static let factoryContainers: [BeakerContainer] = [
-        BeakerContainer(id: "Beaker 5ml",   name: "Beaker 5ml",   tareWeight: 6.105),
-        BeakerContainer(id: "Beaker 10ml",  name: "Beaker 10ml",  tareWeight: 8.560),
-        BeakerContainer(id: "Beaker 25ml",  name: "Beaker 25ml",  tareWeight: 20.631),
-        BeakerContainer(id: "Beaker 50ml",  name: "Beaker 50ml",  tareWeight: 29.312),
-        BeakerContainer(id: "Beaker 150ml", name: "Beaker 150ml", tareWeight: 65.358),
-        BeakerContainer(id: "Beaker 250ml", name: "Beaker 250ml", tareWeight: 103.000),
-        BeakerContainer(id: "Beaker 500ml", name: "Beaker 500ml", tareWeight: 161.130),
-    ]
+    static let factoryContainers: [BeakerContainer] = BeakerContainer.factoryDefaults
 
     /// Backward-compatible alias used by existing code.
     static var beakerContainers: [BeakerContainer] { factoryContainers }
@@ -1367,16 +1712,25 @@ final class SystemConfig {
         // Extra gummy mix — not recorded
         viewModel.extraGummyMixGrams = nil
 
-        // Density calibration — not performed in this batch
-        viewModel.densitySyringeCleanSugar = nil
-        viewModel.densitySyringePlusSugarMass = nil
-        viewModel.densitySyringePlusSugarVol = nil
-        viewModel.densitySyringeCleanGelatin = nil
-        viewModel.densitySyringePlusGelatinMass = nil
-        viewModel.densitySyringePlusGelatinVol = nil
-        viewModel.densitySyringeCleanActive = nil
-        viewModel.densitySyringePlusActiveMass = nil
-        viewModel.densitySyringePlusActiveVol = nil
+        // Density calibration — synthetic syringe measurements
+        // Using 10mL syringe draws for each mixture
+        // Theo gelatin density = 1.0678 g/mL → mass in 10mL = 10.678g
+        // Syringe clean ~5.12g → syringe+mix = 15.798g → target density with +1.5% error ≈ 1.084
+        viewModel.densitySyringeCleanGelatin = 5.12
+        viewModel.densitySyringePlusGelatinMass = 15.96   // mix mass = 10.84g → density = 1.084 (+1.5%)
+        viewModel.densitySyringePlusGelatinVol = 10.0
+
+        // Theo sugar density = 1.4012 g/mL → mass in 10mL = 14.012g
+        // Syringe clean ~5.08g → syringe+mix = 19.092g → target density with -0.8% error ≈ 1.390
+        viewModel.densitySyringeCleanSugar = 5.08
+        viewModel.densitySyringePlusSugarMass = 18.98     // mix mass = 13.90g → density = 1.390 (-0.8%)
+        viewModel.densitySyringePlusSugarVol = 10.0
+
+        // Theo activation density = 1.1430 g/mL → mass in 10mL = 11.430g
+        // Syringe clean ~5.15g → syringe+mix = 16.580g → target density with +1.2% error ≈ 1.157
+        viewModel.densitySyringeCleanActive = 5.15
+        viewModel.densitySyringePlusActiveMass = 16.72    // mix mass = 11.57g → density = 1.157 (+1.2%)
+        viewModel.densitySyringePlusActiveVol = 10.0
 
         // No additional measurements in this batch
         viewModel.additionalMeasurements = [
@@ -1386,26 +1740,44 @@ final class SystemConfig {
             BatchConfigViewModel.AdditionalMeasurement(label: "Container 4"),
         ]
 
-        // HP mode — not used in this batch
+        // HP mode — synthetic cumulative scale readings with realistic offsets
+        // Container selections: Beaker 500ml (substrate), Beaker 150ml (sugar), Beaker 10ml (activation)
         viewModel.highPrecisionMode = true
-        viewModel.hpSubstrateBeakerID = nil
-        viewModel.hpSugarMixBeakerID = nil
-        viewModel.hpActivationTrayID = nil
-        viewModel.hpSubstrateScaleID = nil
-        viewModel.hpSugarMixScaleID = nil
-        viewModel.hpActivationScaleID = nil
-        viewModel.hpGelatin = nil
-        viewModel.hpGelatinWater = nil
-        viewModel.hpGranulated = nil
-        viewModel.hpGlucoseSyrup = nil
-        viewModel.hpSugarWater = nil
-        viewModel.hpCitricAcid = nil
-        viewModel.hpActivationWater = nil
-        viewModel.hpKSorbate = nil
-        viewModel.hpFlavorOilsTerpsActive = nil
-        viewModel.hpActivationTrayResidue = nil
-        viewModel.hpSubstrateSugarTransfer = nil
-        viewModel.hpSubstrateActivationTransfer = nil
+        viewModel.hpSubstrateBeakerID = "Beaker 500ml"
+        viewModel.hpSugarMixBeakerID = "Beaker 150ml"
+        viewModel.hpActivationTrayID = "Beaker 10ml"
+        viewModel.hpSubstrateScaleID = "B"
+        viewModel.hpSugarMixScaleID = "B"
+        viewModel.hpActivationScaleID = "A"
+
+        // Gelatin section (substrate beaker tare = 161.130)
+        // Theo gelatin = 10.034g → reading = tare + gelatin ≈ 171.164
+        // Theo water   = 30.103g → reading = prev + water   ≈ 201.267
+        viewModel.hpGelatin = 171.28       // +0.116 over theo → gelatin mass ~10.150 (+1.2%)
+        viewModel.hpGelatinWater = 201.55  // water mass = 201.55 - 171.28 = 30.270 (+0.6%)
+
+        // Sugar section (sugar beaker tare = 65.358)
+        // Theo granulated = 60.324g → reading = tare + gran ≈ 125.682
+        // Theo glucose    = 60.324g → reading = prev + gluc ≈ 186.007
+        // Theo water      = 22.535g → reading = prev + wat  ≈ 208.542
+        viewModel.hpGranulated = 125.95    // gran mass = 60.592 (+0.4%)
+        viewModel.hpGlucoseSyrup = 186.80  // gluc mass = 186.80 - 125.95 = 60.850 (+0.9%)
+        viewModel.hpSugarWater = 209.10    // water mass = 209.10 - 186.80 = 22.300 (-1.0%)
+
+        // Activation section (activation beaker tare = 8.560)
+        // Theo citric acid = 1.862g → reading = tare + citric ≈ 10.422
+        // Theo activ water = 4.467g → reading = prev + water  ≈ 14.889
+        // Theo K sorbate   = 0.186g → reading = prev + ksorb  ≈ 15.075
+        // Theo oils/terps  = 1.880g → reading = prev + rest   ≈ 16.955
+        viewModel.hpCitricAcid = 10.44     // citric mass = 1.880 (+1.0%)
+        viewModel.hpActivationWater = 14.95 // water mass = 14.95 - 10.44 = 4.510 (+1.0%)
+        viewModel.hpKSorbate = 15.14       // ksorb mass = 15.14 - 14.95 = 0.190 (+2.2%)
+        viewModel.hpFlavorOilsTerpsActive = 17.05 // oils/terps mass = 17.05 - 15.14 = 1.910 (+1.6%)
+        viewModel.hpActivationTrayResidue = 0.0
+
+        // Transfer readings
+        viewModel.hpSubstrateSugarTransfer = 345.10  // substrate + sugar transfer
+        viewModel.hpSubstrateActivationTransfer = 353.50 // substrate + activation transfer
     }
 
     /// Clears all synthetic measurement data from the view model.
@@ -1442,7 +1814,12 @@ final class SystemConfig {
 
         // HP mode
         viewModel.highPrecisionMode = true
+        viewModel.hpGelatin = nil
+        viewModel.hpGelatinWater = nil
+        viewModel.hpGranulated = nil
         viewModel.hpGlucoseSyrup = nil
+        viewModel.hpSugarWater = nil
+        viewModel.hpCitricAcid = nil
         viewModel.hpActivationWater = nil
         viewModel.hpKSorbate = nil
         viewModel.hpFlavorOilsTerpsActive = nil
@@ -1808,6 +2185,12 @@ final class SystemConfig {
 
         // Container tare weights
         resetAllContainerTares()
+
+        // Syringe tare weights
+        resetAllSyringeTares()
+
+        // Tray tare weights
+        resetAllTrayTares()
 
         // Laboratory scales
         scales = Self.factoryScales

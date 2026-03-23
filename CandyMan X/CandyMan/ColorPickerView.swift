@@ -227,15 +227,27 @@ struct ColorPickerView: View {
                 if sortedColors.count >= 3 {
                     Picker("", selection: $maxSliderPercent) {
                         ForEach(maxPickerValues, id: \.self) { val in
-                            Text("\(val)%").tag(Double(val))
+                            Text("\(val)%")
+                                .tag(Double(val))
                         }
                     }
                     .pickerStyle(.wheel)
+                    .tint(systemConfig.designSecondaryAccent)
                     .frame(width: 80, height: 100)
                     .clipped()
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 6)
+
+            if sortedColors.count >= 3 {
+                (Text(String(format: "%.0f%%", maxSliderPercent))
+                    .foregroundStyle(systemConfig.designSecondaryAccent)
+                + Text(" is the concentration of your most concentrated color")
+                    .foregroundStyle(CMTheme.textTertiary))
+                .cmMono10()
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
+            }
 
             ThemedDivider()
 

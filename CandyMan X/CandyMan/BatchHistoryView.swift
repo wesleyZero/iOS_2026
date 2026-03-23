@@ -385,6 +385,8 @@ struct BatchDetailView: View {
                         batchOutputCard.cardStyle()
                         BatchQuantitativeDataSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
                         BatchRelativeDataSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
+                        BatchExperimentalDataSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
+                        BatchExperimentalErrorSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                     .fixedSize(horizontal: false, vertical: true)
@@ -406,6 +408,8 @@ struct BatchDetailView: View {
                     batchOutputCard.cardStyle()
                     BatchQuantitativeDataSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
                     BatchRelativeDataSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
+                    BatchExperimentalDataSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
+                    BatchExperimentalErrorSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
                     BatchMeasurementsSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
                     BatchCalculationsSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()
                     BatchDryWeightSection(batch: batch, copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel).cardStyle()

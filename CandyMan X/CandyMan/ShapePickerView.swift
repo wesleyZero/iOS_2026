@@ -36,6 +36,9 @@ enum MainSection: String, CaseIterable, Identifiable {
     case weightMeasurements    = "Batch Measurements"
     case calibrationMeasurements = "Calibration Measurements"
     case measurementCalculations = "Experiment Data"
+    case experimentalData      = "Experimental Data"
+    case experimentalError     = "Error (Exp. vs Theoretical)"
+    case experimentalData2     = "Experiment Data 2"
     case sigFigs               = "Sig Figs"
     case errorAnalysis         = "Error Analysis"
     case resetSection          = "New Batch"
@@ -44,8 +47,8 @@ enum MainSection: String, CaseIterable, Identifiable {
 
     static let defaultOrder: [MainSection] = [
         .inputSummary, .batchOutput, .measurementEquipment, .batchValidation, .relativeFractions,
-        .weightMeasurements, .calibrationMeasurements, .measurementCalculations,
-        .sigFigs, .errorAnalysis, .resetSection
+        .weightMeasurements, .calibrationMeasurements, .experimentalData2, .measurementCalculations,
+        .experimentalData, .experimentalError, .sigFigs, .errorAnalysis, .resetSection
     ]
 
     static func load() -> [MainSection] {
@@ -174,7 +177,10 @@ struct ShapePickerView: View {
                             VStack(spacing: 12) {
                                 WeightMeasurementsView().cardStyle()
                                 CalibrationMeasurementsView().cardStyle()
+                                ExperimentalData2View().cardStyle()
                                 MeasurementCalculationsView().cardStyle()
+                                ExperimentalDataView().cardStyle()
+                                ExperimentalErrorView().cardStyle()
                                 SigFigsCardView().cardStyle()
                                 ErrorAnalysisView().cardStyle()
                             }
@@ -559,6 +565,9 @@ struct ShapePickerView: View {
         case .weightMeasurements:      WeightMeasurementsView()
         case .calibrationMeasurements: CalibrationMeasurementsView()
         case .measurementCalculations: MeasurementCalculationsView()
+        case .experimentalData:        ExperimentalDataView()
+        case .experimentalError:       ExperimentalErrorView()
+        case .experimentalData2:       ExperimentalData2View()
         case .sigFigs:                 SigFigsCardView()
         case .errorAnalysis:           ErrorAnalysisView()
         case .resetSection:            resetSection

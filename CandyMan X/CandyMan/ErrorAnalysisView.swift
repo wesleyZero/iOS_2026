@@ -89,18 +89,7 @@ struct ErrorAnalysisView: View {
     // MARK: - Sub-views
 
     private func errorSubheader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .cmSubsectionTitle()
-            Spacer()
-            Text("Δ (g)")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-            Text("Δ (%)")
-                .cmFinePrint()
-                .frame(width: 70, alignment: .trailing)
-        }
-        .cmSubsectionPadding()
+        CMTwoColumnSubheader(title: title, col1: "Δ (g)", col2: "Δ (%)")
     }
 
     private func errorCompRow(_ label: String, theoretical: Double, measured: Double?) -> some View {

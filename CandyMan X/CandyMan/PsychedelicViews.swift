@@ -24,6 +24,7 @@ import SwiftUI
 /// hue-shifting text, pulsing glow aura, breathing scale, and 3D wobble.
 /// Shown briefly after the user taps "Calculate".
 struct PsychedelicAlert1: View {
+    var text: String = "Because the CandyMan can!!"
     @State private var phase: CGFloat = 0
     @State private var breathe: CGFloat = 1.0
     @State private var glowPulse: CGFloat = 0.5
@@ -57,7 +58,7 @@ struct PsychedelicAlert1: View {
                 .padding(.vertical, 14)
 
             // Main pill
-            Text("Because the CandyMan can!!")
+            Text(text)
                 .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(
                     LinearGradient(

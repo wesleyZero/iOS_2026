@@ -1,32 +1,32 @@
 //
-//  ContainerPickerSheet.swift
+//  SyringePickerSheet.swift
 //  CandyMan
 //
-//  Bottom-sheet wheel picker for selecting a beaker container from
-//  SystemConfig.beakerContainers. Shows container name and current tare mass.
-//  Follows the same pattern as ResolutionWheelPickerSheet in SettingsView.
+//  Bottom-sheet wheel picker for selecting a syringe from
+//  SystemConfig.syringes. Shows syringe name and current tare mass.
+//  Follows the same pattern as ContainerPickerSheet.
 //
 
 import SwiftUI
 
-/// Data model for driving the container picker sheet.
-struct ContainerPickerRow: Identifiable {
+/// Data model for driving the syringe picker sheet.
+struct SyringePickerRow: Identifiable {
     let id = UUID()
-    let label: String            // e.g. "Substrate Beaker"
-    let currentID: String?       // currently selected BeakerContainer.id
+    let label: String            // e.g. "Transfer Syringe"
+    let currentID: String?       // currently selected SyringeContainer.id
     let onSelect: (String) -> Void
 }
 
-struct ContainerPickerSheet: View {
+struct SyringePickerSheet: View {
     @Environment(SystemConfig.self) private var systemConfig
     @Environment(\.dismiss) private var dismiss
-    let row: ContainerPickerRow
+    let row: SyringePickerRow
 
     @State private var selectedID: String
 
-    init(row: ContainerPickerRow) {
+    init(row: SyringePickerRow) {
         self.row = row
-        _selectedID = State(initialValue: row.currentID ?? SystemConfig.beakerContainers.first!.id)
+        _selectedID = State(initialValue: row.currentID ?? SystemConfig.factorySyringes.first!.id)
     }
 
     var body: some View {
@@ -44,17 +44,17 @@ struct ContainerPickerSheet: View {
                 .foregroundStyle(CMTheme.textPrimary)
                 .padding(.bottom, 4)
 
-            Text("Select Container")
+            Text("Select Syringe")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(CMTheme.textSecondary)
                 .padding(.bottom, 20)
 
-            // Wheel picker showing "Beaker 25ml  (20.631 g)"
+            // Wheel picker showing "Syringe 60mL  (30.000 g)"
             Picker("", selection: $selectedID) {
-                ForEach(systemConfig.containers) { beaker in
-                    Text("\(beaker.name)  (\(beaker.formattedTareWeight))")
+                ForEach(systemConfig.syringes) { syringe in
+                    Text("\(syringe.name)  (\(syringe.formattedTareWeight))")
                         .font(.system(size: 18, weight: .medium, design: .monospaced))
-                        .tag(beaker.id)
+                        .tag(syringe.id)
                 }
             }
             .pickerStyle(.wheel)

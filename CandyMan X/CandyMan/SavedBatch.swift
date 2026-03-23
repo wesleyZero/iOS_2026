@@ -187,6 +187,12 @@ class SavedBatch {
     var weightTrayPlusResidue: Double?
     var extraGummyMixGrams: Double?
 
+    // HP transfer syringe/scale selections
+    var hpTransferSyringeID: String?
+    var hpTransferScaleID: String?
+    var hpMoldsTrayID: String?
+    var hpMoldsScaleID: String?
+
     // The "initial" wet gummy mass used for dehydration % calculations.
     var wetGummyMassGrams: Double?
 
@@ -277,6 +283,10 @@ class SavedBatch {
         weightTrayClean: Double? = nil,
         weightTrayPlusResidue: Double? = nil,
         extraGummyMixGrams: Double? = nil,
+        hpTransferSyringeID: String? = nil,
+        hpTransferScaleID: String? = nil,
+        hpMoldsTrayID: String? = nil,
+        hpMoldsScaleID: String? = nil,
         overageFactor: Double = 1.03,
         extraGummies: Int = 0,
         densitySyringeCleanSugar: Double? = nil,
@@ -331,6 +341,10 @@ class SavedBatch {
         self.weightTrayClean = weightTrayClean
         self.weightTrayPlusResidue = weightTrayPlusResidue
         self.extraGummyMixGrams = extraGummyMixGrams
+        self.hpTransferSyringeID = hpTransferSyringeID
+        self.hpTransferScaleID = hpTransferScaleID
+        self.hpMoldsTrayID = hpMoldsTrayID
+        self.hpMoldsScaleID = hpMoldsScaleID
         self.overageFactor = overageFactor
         self.extraGummies = extraGummies
         self.densitySyringeCleanSugar = densitySyringeCleanSugar
@@ -437,6 +451,10 @@ struct SavedBatchDTO: Codable {
     var weightTrayClean: Double?
     var weightTrayPlusResidue: Double?
     var extraGummyMixGrams: Double?
+    var hpTransferSyringeID: String?
+    var hpTransferScaleID: String?
+    var hpMoldsTrayID: String?
+    var hpMoldsScaleID: String?
     var overageFactor: Double?
     var extraGummies: Int?
     var wetGummyMassGrams: Double?
@@ -562,6 +580,10 @@ extension SavedBatch {
             weightTrayClean: weightTrayClean,
             weightTrayPlusResidue: weightTrayPlusResidue,
             extraGummyMixGrams: extraGummyMixGrams,
+            hpTransferSyringeID: hpTransferSyringeID,
+            hpTransferScaleID: hpTransferScaleID,
+            hpMoldsTrayID: hpMoldsTrayID,
+            hpMoldsScaleID: hpMoldsScaleID,
             overageFactor: overageFactor,
             extraGummies: extraGummies,
             wetGummyMassGrams: wetGummyMassGrams,
@@ -626,6 +648,10 @@ extension SavedBatch {
             weightTrayClean: dto.weightTrayClean,
             weightTrayPlusResidue: dto.weightTrayPlusResidue,
             extraGummyMixGrams: dto.extraGummyMixGrams,
+            hpTransferSyringeID: dto.hpTransferSyringeID,
+            hpTransferScaleID: dto.hpTransferScaleID,
+            hpMoldsTrayID: dto.hpMoldsTrayID,
+            hpMoldsScaleID: dto.hpMoldsScaleID,
             overageFactor: dto.overageFactor ?? 1.03,
             extraGummies: dto.extraGummies ?? 0,
             densitySyringeCleanSugar: dto.densitySyringeCleanSugar,
@@ -743,6 +769,10 @@ extension BatchConfigViewModel {
             weightTrayClean: weightTrayClean,
             weightTrayPlusResidue: weightTrayPlusResidue,
             extraGummyMixGrams: extraGummyMixGrams,
+            hpTransferSyringeID: hpTransferSyringeID,
+            hpTransferScaleID: hpTransferScaleID,
+            hpMoldsTrayID: hpMoldsTrayID,
+            hpMoldsScaleID: hpMoldsScaleID,
             overageFactor: overageFactor,
             extraGummies: extraGummies,
             densitySyringeCleanSugar: densitySyringeCleanSugar,

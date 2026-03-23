@@ -88,6 +88,9 @@ struct SettingsView: View {
             traysSection(systemConfig: systemConfig).cardStyle()
             densitiesSection(systemConfig: systemConfig).cardStyle()
             containerTareWeightsSection(systemConfig: systemConfig).cardStyle()
+            syringeTareWeightsSection(systemConfig: systemConfig).cardStyle()
+            stirBarTareWeightsSection(systemConfig: systemConfig).cardStyle()
+            trayTareWeightsSection(systemConfig: systemConfig).cardStyle()
             scalesSection(systemConfig: systemConfig).cardStyle()
         })
     }
@@ -154,6 +157,9 @@ struct SettingsView: View {
             traysSection(systemConfig: systemConfig).cardStyle()
             densitiesSection(systemConfig: systemConfig).cardStyle()
             containerTareWeightsSection(systemConfig: systemConfig).cardStyle()
+            syringeTareWeightsSection(systemConfig: systemConfig).cardStyle()
+            stirBarTareWeightsSection(systemConfig: systemConfig).cardStyle()
+            trayTareWeightsSection(systemConfig: systemConfig).cardStyle()
             scalesSection(systemConfig: systemConfig).cardStyle()
 
             categoryLabel("Preferences")
@@ -886,6 +892,30 @@ struct SettingsView: View {
     @State private var containerIndexToDelete: Int? = nil
     @State private var showAddContainerSheet = false
 
+    // Syringe management state
+    @State private var showSyringes = false
+    @State private var syringeToEdit: SystemConfig.SyringeContainer? = nil
+    @State private var showEditSyringeConfirm = false
+    @State private var showDeleteSyringeConfirm = false
+    @State private var syringeIndexToDelete: Int? = nil
+    @State private var showAddSyringeSheet = false
+
+    // Tray tare management state
+    @State private var showTrayTares = false
+    @State private var trayToEdit: SystemConfig.TrayContainer? = nil
+    @State private var showEditTrayConfirm = false
+    @State private var showDeleteTrayConfirm = false
+    @State private var trayIndexToDelete: Int? = nil
+    @State private var showAddTraySheet = false
+
+    // Stir bar management state
+    @State private var showStirBars = false
+    @State private var stirBarToEdit: SystemConfig.StirBar? = nil
+    @State private var showEditStirBarConfirm = false
+    @State private var showDeleteStirBarConfirm = false
+    @State private var stirBarIndexToDelete: Int? = nil
+    @State private var showAddStirBarSheet = false
+
     private func containerTareWeightsSection(systemConfig: SystemConfig) -> some View {
         @Bindable var systemConfig = systemConfig
         let isDefault = systemConfig.containers == SystemConfig.BeakerContainer.factoryDefaults
@@ -913,6 +943,8 @@ struct SettingsView: View {
                 HStack(spacing: 4) {
                     Text("Container").font(.caption2).fontWeight(.semibold).foregroundStyle(CMTheme.textSecondary)
                     Spacer()
+                    Text("Res.").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 50, alignment: .trailing)
                     Text("Tare").font(.caption2).foregroundStyle(CMTheme.textTertiary)
                         .frame(width: 80, alignment: .trailing)
                 }
@@ -925,7 +957,11 @@ struct SettingsView: View {
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(CMTheme.textPrimary)
                             Spacer()
-                            Text(String(format: "%.3f g", container.tareWeight))
+                            Text(MeasurementResolution(rawValue: container.tareResolution)?.label ?? "\(container.tareResolution) g")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(CMTheme.textTertiary)
+                                .frame(width: 50, alignment: .trailing)
+                            Text(container.formattedTareWeight)
                                 .font(.system(size: 13, design: .monospaced))
                                 .foregroundStyle(CMTheme.textSecondary)
                                 .frame(width: 80, alignment: .trailing)
@@ -1034,7 +1070,488 @@ struct SettingsView: View {
                 systemConfig: systemConfig,
                 existingContainer: containerToEdit,
                 name: containerToEdit?.name ?? "",
-                tareWeight: containerToEdit?.tareWeight ?? 0
+                tareWeight: containerToEdit?.tareWeight ?? 0,
+                tareResolution: containerToEdit?.tareResolution ?? 0.001
+            )
+        }
+    }
+
+    private func syringeTareWeightsSection(systemConfig: SystemConfig) -> some View {
+        @Bindable var systemConfig = systemConfig
+        let isDefault = systemConfig.syringes == SystemConfig.SyringeContainer.factoryDefaults
+
+        return VStack(spacing: 0) {
+            Button {
+                CMHaptic.light()
+                withAnimation(.cmExpand) { showSyringes.toggle() }
+            } label: {
+                HStack {
+                    Text("Syringe Tare Weights")
+                        .cmSectionTitle(accent: systemConfig.designTitle)
+                    Spacer()
+                    CMDisclosureChevron(isExpanded: showSyringes)
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if showSyringes {
+                ThemedDivider(indent: 16)
+
+                // Column headers
+                HStack(spacing: 4) {
+                    Text("Syringe").font(.caption2).fontWeight(.semibold).foregroundStyle(CMTheme.textSecondary)
+                    Spacer()
+                    Text("Res.").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 50, alignment: .trailing)
+                    Text("Tare").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 80, alignment: .trailing)
+                }
+                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
+
+                ForEach(Array(systemConfig.syringes.enumerated()), id: \.element.id) { index, syringe in
+                    VStack(spacing: 0) {
+                        HStack(spacing: 6) {
+                            Text(syringe.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(CMTheme.textPrimary)
+                            Spacer()
+                            Text(MeasurementResolution(rawValue: syringe.tareResolution)?.label ?? "\(syringe.tareResolution) g")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(CMTheme.textTertiary)
+                                .frame(width: 50, alignment: .trailing)
+                            Text(syringe.formattedTareWeight)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(CMTheme.textSecondary)
+                                .frame(width: 80, alignment: .trailing)
+                            // Edit button
+                            Button {
+                                CMHaptic.light()
+                                syringeToEdit = syringe
+                                showEditSyringeConfirm = true
+                            } label: {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 18))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(systemConfig.designTitle)
+                            }
+                            .buttonStyle(.plain)
+                            // Remove button
+                            Button {
+                                CMHaptic.light()
+                                syringeIndexToDelete = index
+                                showDeleteSyringeConfirm = true
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.system(size: 18))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(systemConfig.designAlert)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+
+                        if index < systemConfig.syringes.count - 1 { Divider().padding(.leading, 16) }
+                    }
+                }
+
+                // Add Syringe button
+                ThemedDivider(indent: 16)
+                Button {
+                    CMHaptic.light()
+                    syringeToEdit = nil
+                    showAddSyringeSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(systemConfig.designTitle)
+                        Text("Add Syringe")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(systemConfig.designTitle)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                if !isDefault {
+                    HStack {
+                        Spacer()
+                        Button {
+                            CMHaptic.medium()
+                            withAnimation(.cmSpring) { systemConfig.resetAllSyringeTares() }
+                        } label: {
+                            Label("Reset to Defaults", systemImage: "arrow.counterclockwise")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(systemConfig.designAlert)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16).padding(.top, 4)
+                }
+
+                Text("Tare weights are automatically loaded when selecting a syringe.")
+                    .cmFootnote()
+                    .cmSettingsRowPadding()
+            }
+        }
+        .alert("Remove Syringe?", isPresented: $showDeleteSyringeConfirm) {
+            Button("Cancel", role: .cancel) { syringeIndexToDelete = nil }
+            Button("Remove", role: .destructive) {
+                if let idx = syringeIndexToDelete, idx < systemConfig.syringes.count {
+                    CMHaptic.success()
+                    withAnimation(.cmSpring) { _ = systemConfig.syringes.remove(at: idx) }
+                }
+                syringeIndexToDelete = nil
+            }
+        } message: {
+            if let idx = syringeIndexToDelete, idx < systemConfig.syringes.count {
+                Text("Are you sure you want to remove \"\(systemConfig.syringes[idx].name)\" from the system? This action cannot be undone.")
+            } else {
+                Text("Are you sure you want to remove this syringe?")
+            }
+        }
+        .alert("Edit Syringe?", isPresented: $showEditSyringeConfirm) {
+            Button("Cancel", role: .cancel) { syringeToEdit = nil }
+            Button("Edit") {
+                showAddSyringeSheet = true
+            }
+        } message: {
+            if let syringe = syringeToEdit {
+                Text("Are you sure you want to modify \"\(syringe.name)\"? Changes will affect tare weight calculations.")
+            } else {
+                Text("Are you sure you want to modify this syringe?")
+            }
+        }
+        .sheet(isPresented: $showAddSyringeSheet, onDismiss: { syringeToEdit = nil }) {
+            SyringeEditorSheet(
+                systemConfig: systemConfig,
+                existingSyringe: syringeToEdit,
+                name: syringeToEdit?.name ?? "",
+                tareWeight: syringeToEdit?.tareWeight ?? 0,
+                tareResolution: syringeToEdit?.tareResolution ?? 0.001
+            )
+        }
+    }
+
+    private func stirBarTareWeightsSection(systemConfig: SystemConfig) -> some View {
+        @Bindable var systemConfig = systemConfig
+        let isDefault = systemConfig.stirBars == SystemConfig.StirBar.factoryDefaults
+
+        return VStack(spacing: 0) {
+            Button {
+                CMHaptic.light()
+                withAnimation(.cmExpand) { showStirBars.toggle() }
+            } label: {
+                HStack {
+                    Text("Stir Bar Masses")
+                        .cmSectionTitle(accent: systemConfig.designTitle)
+                    Spacer()
+                    CMDisclosureChevron(isExpanded: showStirBars)
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if showStirBars {
+                ThemedDivider(indent: 16)
+
+                // Column headers
+                HStack(spacing: 4) {
+                    Text("Stir Bar").font(.caption2).fontWeight(.semibold).foregroundStyle(CMTheme.textSecondary)
+                    Spacer()
+                    Text("Res.").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 50, alignment: .trailing)
+                    Text("Mass").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 80, alignment: .trailing)
+                }
+                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
+
+                ForEach(Array(systemConfig.stirBars.enumerated()), id: \.element.id) { index, bar in
+                    VStack(spacing: 0) {
+                        HStack(spacing: 6) {
+                            Text(bar.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(CMTheme.textPrimary)
+                            Spacer()
+                            Text(MeasurementResolution(rawValue: bar.tareResolution)?.label ?? "\(bar.tareResolution) g")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(CMTheme.textTertiary)
+                                .frame(width: 50, alignment: .trailing)
+                            Text(bar.formattedMass)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(CMTheme.textSecondary)
+                                .frame(width: 80, alignment: .trailing)
+                            // Edit button
+                            Button {
+                                CMHaptic.light()
+                                stirBarToEdit = bar
+                                showEditStirBarConfirm = true
+                            } label: {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 18))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(systemConfig.designTitle)
+                            }
+                            .buttonStyle(.plain)
+                            // Remove button
+                            Button {
+                                CMHaptic.light()
+                                stirBarIndexToDelete = index
+                                showDeleteStirBarConfirm = true
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.system(size: 18))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(systemConfig.designAlert)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+
+                        if index < systemConfig.stirBars.count - 1 { Divider().padding(.leading, 16) }
+                    }
+                }
+
+                // Add Stir Bar button
+                ThemedDivider(indent: 16)
+                Button {
+                    CMHaptic.light()
+                    stirBarToEdit = nil
+                    showAddStirBarSheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(systemConfig.designTitle)
+                        Text("Add Stir Bar")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(systemConfig.designTitle)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                if !isDefault {
+                    HStack {
+                        Spacer()
+                        Button {
+                            CMHaptic.medium()
+                            withAnimation(.cmSpring) { systemConfig.resetAllStirBars() }
+                        } label: {
+                            Label("Reset to Defaults", systemImage: "arrow.counterclockwise")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(systemConfig.designAlert)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16).padding(.top, 4)
+                }
+
+                Text("Stir bar masses are automatically loaded when selecting a stir bar during batch measurements.")
+                    .cmFootnote()
+                    .cmSettingsRowPadding()
+            }
+        }
+        .alert("Remove Stir Bar?", isPresented: $showDeleteStirBarConfirm) {
+            Button("Cancel", role: .cancel) { stirBarIndexToDelete = nil }
+            Button("Remove", role: .destructive) {
+                if let idx = stirBarIndexToDelete, idx < systemConfig.stirBars.count {
+                    CMHaptic.success()
+                    withAnimation(.cmSpring) { _ = systemConfig.stirBars.remove(at: idx) }
+                }
+                stirBarIndexToDelete = nil
+            }
+        } message: {
+            if let idx = stirBarIndexToDelete, idx < systemConfig.stirBars.count {
+                Text("Are you sure you want to remove \"\(systemConfig.stirBars[idx].name)\" from the system? This action cannot be undone.")
+            } else {
+                Text("Are you sure you want to remove this stir bar?")
+            }
+        }
+        .alert("Edit Stir Bar?", isPresented: $showEditStirBarConfirm) {
+            Button("Cancel", role: .cancel) { stirBarToEdit = nil }
+            Button("Edit") {
+                showAddStirBarSheet = true
+            }
+        } message: {
+            if let bar = stirBarToEdit {
+                Text("Are you sure you want to modify \"\(bar.name)\"? Changes will affect tare weight calculations.")
+            } else {
+                Text("Are you sure you want to modify this stir bar?")
+            }
+        }
+        .sheet(isPresented: $showAddStirBarSheet, onDismiss: { stirBarToEdit = nil }) {
+            StirBarEditorSheet(
+                systemConfig: systemConfig,
+                existingStirBar: stirBarToEdit,
+                name: stirBarToEdit?.name ?? "",
+                mass: stirBarToEdit?.mass ?? 0,
+                tareResolution: stirBarToEdit?.tareResolution ?? 0.001
+            )
+        }
+    }
+
+    private func trayTareWeightsSection(systemConfig: SystemConfig) -> some View {
+        @Bindable var systemConfig = systemConfig
+        let isDefault = systemConfig.trays == SystemConfig.TrayContainer.factoryDefaults
+
+        return VStack(spacing: 0) {
+            Button {
+                CMHaptic.light()
+                withAnimation(.cmExpand) { showTrayTares.toggle() }
+            } label: {
+                HStack {
+                    Text("Tray Tare Weights")
+                        .cmSectionTitle(accent: systemConfig.designTitle)
+                    Spacer()
+                    CMDisclosureChevron(isExpanded: showTrayTares)
+                }
+                .contentShape(Rectangle())
+                .padding(.horizontal, 16).padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+
+            if showTrayTares {
+                ThemedDivider(indent: 16)
+
+                // Column headers
+                HStack(spacing: 4) {
+                    Text("Tray").font(.caption2).fontWeight(.semibold).foregroundStyle(CMTheme.textSecondary)
+                    Spacer()
+                    Text("Res.").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 50, alignment: .trailing)
+                    Text("Tare").font(.caption2).foregroundStyle(CMTheme.textTertiary)
+                        .frame(width: 80, alignment: .trailing)
+                }
+                .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
+
+                ForEach(Array(systemConfig.trays.enumerated()), id: \.element.id) { index, tray in
+                    VStack(spacing: 0) {
+                        HStack(spacing: 6) {
+                            Text(tray.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(CMTheme.textPrimary)
+                            Spacer()
+                            Text(MeasurementResolution(rawValue: tray.tareResolution)?.label ?? "\(tray.tareResolution) g")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(CMTheme.textTertiary)
+                                .frame(width: 50, alignment: .trailing)
+                            Text(tray.formattedTareWeight)
+                                .font(.system(size: 13, design: .monospaced))
+                                .foregroundStyle(CMTheme.textSecondary)
+                                .frame(width: 80, alignment: .trailing)
+                            // Edit button
+                            Button {
+                                CMHaptic.light()
+                                trayToEdit = tray
+                                showEditTrayConfirm = true
+                            } label: {
+                                Image(systemName: "pencil.circle.fill")
+                                    .font(.system(size: 18))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(systemConfig.designTitle)
+                            }
+                            .buttonStyle(.plain)
+                            // Remove button
+                            Button {
+                                CMHaptic.light()
+                                trayIndexToDelete = index
+                                showDeleteTrayConfirm = true
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .font(.system(size: 18))
+                                    .symbolRenderingMode(.hierarchical)
+                                    .foregroundStyle(systemConfig.designAlert)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 8)
+
+                        if index < systemConfig.trays.count - 1 { Divider().padding(.leading, 16) }
+                    }
+                }
+
+                // Add Tray button
+                ThemedDivider(indent: 16)
+                Button {
+                    CMHaptic.light()
+                    trayToEdit = nil
+                    showAddTraySheet = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(systemConfig.designTitle)
+                        Text("Add Tray")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(systemConfig.designTitle)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+
+                if !isDefault {
+                    HStack {
+                        Spacer()
+                        Button {
+                            CMHaptic.medium()
+                            withAnimation(.cmSpring) { systemConfig.resetAllTrayTares() }
+                        } label: {
+                            Label("Reset to Defaults", systemImage: "arrow.counterclockwise")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(systemConfig.designAlert)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 16).padding(.top, 4)
+                }
+
+                Text("Tare weights are automatically loaded when selecting a tray.")
+                    .cmFootnote()
+                    .cmSettingsRowPadding()
+            }
+        }
+        .alert("Remove Tray?", isPresented: $showDeleteTrayConfirm) {
+            Button("Cancel", role: .cancel) { trayIndexToDelete = nil }
+            Button("Remove", role: .destructive) {
+                if let idx = trayIndexToDelete, idx < systemConfig.trays.count {
+                    CMHaptic.success()
+                    withAnimation(.cmSpring) { _ = systemConfig.trays.remove(at: idx) }
+                }
+                trayIndexToDelete = nil
+            }
+        } message: {
+            if let idx = trayIndexToDelete, idx < systemConfig.trays.count {
+                Text("Are you sure you want to remove \"\(systemConfig.trays[idx].name)\" from the system? This action cannot be undone.")
+            } else {
+                Text("Are you sure you want to remove this tray?")
+            }
+        }
+        .alert("Edit Tray?", isPresented: $showEditTrayConfirm) {
+            Button("Cancel", role: .cancel) { trayToEdit = nil }
+            Button("Edit") {
+                showAddTraySheet = true
+            }
+        } message: {
+            if let tray = trayToEdit {
+                Text("Are you sure you want to modify \"\(tray.name)\"? Changes will affect tare weight calculations.")
+            } else {
+                Text("Are you sure you want to modify this tray?")
+            }
+        }
+        .sheet(isPresented: $showAddTraySheet, onDismiss: { trayToEdit = nil }) {
+            TrayEditorSheet(
+                systemConfig: systemConfig,
+                existingTray: trayToEdit,
+                name: trayToEdit?.name ?? "",
+                tareWeight: trayToEdit?.tareWeight ?? 0,
+                tareResolution: trayToEdit?.tareResolution ?? 0.01
             )
         }
     }
@@ -1433,9 +1950,9 @@ struct SettingsView: View {
 
             Divider().padding(.leading, 16)
 
-            // Numeric input mode
+            // Keyboard mode
             HStack {
-                Text("Numeric Input").font(.body)
+                Text("Keyboard Mode").font(.body)
                 Spacer()
                 Picker("", selection: $systemConfig.numericInputMode) {
                     Text("Auto").tag(NumericInputMode.auto)
@@ -2532,6 +3049,249 @@ struct ScaleEditorSheet: View {
     }
 }
 
+// MARK: - Syringe Editor Sheet
+
+/// Sheet for adding a new syringe or editing an existing one.
+// MARK: - Stir Bar Editor Sheet
+
+/// Sheet for adding a new stir bar or editing an existing one.
+struct StirBarEditorSheet: View {
+    var systemConfig: SystemConfig
+    /// If non-nil, we are editing this existing stir bar; otherwise adding a new one.
+    var existingStirBar: SystemConfig.StirBar?
+
+    @State var name: String
+    @State var mass: Double
+    @State var tareResolution: Double
+    @Environment(\.dismiss) private var dismiss
+
+    private var isEditing: Bool { existingStirBar != nil }
+    private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && mass >= 0 }
+
+    private static let resolutionOptions: [Double] = [1.0, 0.1, 0.01, 0.001]
+
+    private func resolutionLabel(_ res: Double) -> String {
+        if res >= 1 { return "1 g" }
+        if res >= 0.1 { return "0.1 g" }
+        if res >= 0.01 { return "0.01 g" }
+        return "0.001 g"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Stir Bar Name") {
+                    TextField("e.g. Uncircumcised", text: $name)
+                        .font(.system(size: 16, weight: .medium))
+                }
+                Section("Mass (g)") {
+                    NumericField(value: $mass, decimals: 3)
+                        .font(.system(size: 16, weight: .medium))
+                }
+                Section("Measurement Resolution") {
+                    Picker("Resolution", selection: $tareResolution) {
+                        ForEach(Self.resolutionOptions, id: \.self) { res in
+                            Text(resolutionLabel(res)).tag(res)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(CMTheme.pageBG)
+            .navigationTitle(isEditing ? "Edit Stir Bar" : "Add Stir Bar")
+            #if os(iOS) || os(visionOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isEditing ? "Save" : "Add") {
+                        CMHaptic.success()
+                        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+                        if let existing = existingStirBar,
+                           let idx = systemConfig.stirBars.firstIndex(where: { $0.id == existing.id }) {
+                            systemConfig.stirBars[idx].name = trimmedName
+                            systemConfig.stirBars[idx].mass = mass
+                            systemConfig.stirBars[idx].tareResolution = tareResolution
+                        } else {
+                            let newID = trimmedName.isEmpty ? UUID().uuidString : trimmedName
+                            let newBar = SystemConfig.StirBar(id: newID, name: trimmedName, mass: mass, tareResolution: tareResolution)
+                            systemConfig.stirBars.append(newBar)
+                        }
+                        dismiss()
+                    }
+                    .disabled(!isValid)
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+struct SyringeEditorSheet: View {
+    var systemConfig: SystemConfig
+    /// If non-nil, we are editing this existing syringe; otherwise adding a new one.
+    var existingSyringe: SystemConfig.SyringeContainer?
+
+    @State var name: String
+    @State var tareWeight: Double
+    @State var tareResolution: Double
+    @Environment(\.dismiss) private var dismiss
+
+    private var isEditing: Bool { existingSyringe != nil }
+    private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && tareWeight >= 0 }
+
+    private static let resolutionOptions: [Double] = [1.0, 0.1, 0.01, 0.001]
+
+    private func resolutionLabel(_ res: Double) -> String {
+        if res >= 1 { return "1 g" }
+        if res >= 0.1 { return "0.1 g" }
+        if res >= 0.01 { return "0.01 g" }
+        return "0.001 g"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Syringe Name") {
+                    TextField("e.g. Syringe 60mL", text: $name)
+                        .font(.system(size: 16, weight: .medium))
+                }
+                Section("Tare Weight (g)") {
+                    NumericField(value: $tareWeight, decimals: 3)
+                        .font(.system(size: 16, weight: .medium))
+                }
+                Section("Measurement Resolution") {
+                    Picker("Resolution", selection: $tareResolution) {
+                        ForEach(Self.resolutionOptions, id: \.self) { res in
+                            Text(resolutionLabel(res)).tag(res)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(CMTheme.pageBG)
+            .navigationTitle(isEditing ? "Edit Syringe" : "Add Syringe")
+            #if os(iOS) || os(visionOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isEditing ? "Save" : "Add") {
+                        CMHaptic.success()
+                        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+                        if let existing = existingSyringe,
+                           let idx = systemConfig.syringes.firstIndex(where: { $0.id == existing.id }) {
+                            systemConfig.syringes[idx].name = trimmedName
+                            systemConfig.syringes[idx].tareWeight = tareWeight
+                            systemConfig.syringes[idx].tareResolution = tareResolution
+                        } else {
+                            let newID = trimmedName.isEmpty ? UUID().uuidString : trimmedName
+                            let newSyringe = SystemConfig.SyringeContainer(id: newID, name: trimmedName, tareWeight: tareWeight, tareResolution: tareResolution)
+                            systemConfig.syringes.append(newSyringe)
+                        }
+                        dismiss()
+                    }
+                    .disabled(!isValid)
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+// MARK: - Tray Editor Sheet
+
+/// Sheet for adding a new tray or editing an existing one.
+struct TrayEditorSheet: View {
+    var systemConfig: SystemConfig
+    /// If non-nil, we are editing this existing tray; otherwise adding a new one.
+    var existingTray: SystemConfig.TrayContainer?
+
+    @State var name: String
+    @State var tareWeight: Double
+    @State var tareResolution: Double
+    @Environment(\.dismiss) private var dismiss
+
+    private var isEditing: Bool { existingTray != nil }
+    private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && tareWeight >= 0 }
+
+    private static let resolutionOptions: [Double] = [1.0, 0.1, 0.01, 0.001]
+
+    private func resolutionLabel(_ res: Double) -> String {
+        if res >= 1 { return "1 g" }
+        if res >= 0.1 { return "0.1 g" }
+        if res >= 0.01 { return "0.01 g" }
+        return "0.001 g"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Tray Name") {
+                    TextField("e.g. New Bear", text: $name)
+                        .font(.system(size: 16, weight: .medium))
+                }
+                Section("Tare Weight (g)") {
+                    NumericField(value: $tareWeight, decimals: 3)
+                        .font(.system(size: 16, weight: .medium))
+                }
+                Section("Measurement Resolution") {
+                    Picker("Resolution", selection: $tareResolution) {
+                        ForEach(Self.resolutionOptions, id: \.self) { res in
+                            Text(resolutionLabel(res)).tag(res)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(CMTheme.pageBG)
+            .navigationTitle(isEditing ? "Edit Tray" : "Add Tray")
+            #if os(iOS) || os(visionOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isEditing ? "Save" : "Add") {
+                        CMHaptic.success()
+                        let trimmedName = name.trimmingCharacters(in: .whitespaces)
+                        if let existing = existingTray,
+                           let idx = systemConfig.trays.firstIndex(where: { $0.id == existing.id }) {
+                            systemConfig.trays[idx].name = trimmedName
+                            systemConfig.trays[idx].tareWeight = tareWeight
+                            systemConfig.trays[idx].tareResolution = tareResolution
+                        } else {
+                            let newID = trimmedName.isEmpty ? UUID().uuidString : trimmedName
+                            let newTray = SystemConfig.TrayContainer(id: newID, name: trimmedName, tareWeight: tareWeight, tareResolution: tareResolution)
+                            systemConfig.trays.append(newTray)
+                        }
+                        dismiss()
+                    }
+                    .disabled(!isValid)
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+    }
+}
+
 // MARK: - Container Editor Sheet
 
 /// Sheet for adding a new container or editing an existing one.
@@ -2542,10 +3302,20 @@ struct ContainerEditorSheet: View {
 
     @State var name: String
     @State var tareWeight: Double
+    @State var tareResolution: Double
     @Environment(\.dismiss) private var dismiss
 
     private var isEditing: Bool { existingContainer != nil }
     private var isValid: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && tareWeight >= 0 }
+
+    private static let resolutionOptions: [Double] = [1.0, 0.1, 0.01, 0.001]
+
+    private func resolutionLabel(_ res: Double) -> String {
+        if res >= 1 { return "1 g" }
+        if res >= 0.1 { return "0.1 g" }
+        if res >= 0.01 { return "0.01 g" }
+        return "0.001 g"
+    }
 
     var body: some View {
         NavigationStack {
@@ -2557,6 +3327,14 @@ struct ContainerEditorSheet: View {
                 Section("Tare Weight (g)") {
                     NumericField(value: $tareWeight, decimals: 3)
                         .font(.system(size: 16, weight: .medium))
+                }
+                Section("Measurement Resolution") {
+                    Picker("Resolution", selection: $tareResolution) {
+                        ForEach(Self.resolutionOptions, id: \.self) { res in
+                            Text(resolutionLabel(res)).tag(res)
+                        }
+                    }
+                    .pickerStyle(.segmented)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -2578,10 +3356,11 @@ struct ContainerEditorSheet: View {
                             // Update existing
                             systemConfig.containers[idx].name = trimmedName
                             systemConfig.containers[idx].tareWeight = tareWeight
+                            systemConfig.containers[idx].tareResolution = tareResolution
                         } else {
                             // Generate a new unique ID from the name
                             let newID = trimmedName.isEmpty ? UUID().uuidString : trimmedName
-                            let newContainer = SystemConfig.BeakerContainer(id: newID, name: trimmedName, tareWeight: tareWeight)
+                            let newContainer = SystemConfig.BeakerContainer(id: newID, name: trimmedName, tareWeight: tareWeight, tareResolution: tareResolution)
                             systemConfig.containers.append(newContainer)
                         }
                         dismiss()

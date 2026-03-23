@@ -18,13 +18,20 @@ import SwiftUI
 import SwiftData
 
 struct WeightMeasurementsView: View {
+    var isFullScreen: Bool = false
+
     @Environment(BatchConfigViewModel.self) private var viewModel
     @Environment(SystemConfig.self) private var systemConfig
+    @Environment(\.dismiss) private var dismiss
     @State private var isExpanded: Bool = true
+    @State private var showFullScreen = false
     @State private var showAdditionalMeasurements = false
-    @State private var showCorrections = false
+    @State private var showCorrectionsSection: BatchConfigViewModel.CorrectionSection? = nil
     @State private var containerPickerRow: ContainerPickerRow? = nil
     @State private var scalePickerRow: ScalePickerRow? = nil
+    @State private var syringePickerRow: SyringePickerRow? = nil
+    @State private var trayPickerRow: TrayPickerRow? = nil
+    @State private var stirBarPickerRow: StirBarPickerRow? = nil
     @State private var showContainerInfo: String? = nil
 
     /// Design-language measurement color (replaces hardcoded hpCyan).
@@ -53,6 +60,27 @@ struct WeightMeasurementsView: View {
                 }
                 .buttonStyle(.plain)
 
+                Button {
+                    CMHaptic.medium()
+                    if isFullScreen {
+                        dismiss()
+                    } else {
+                        showFullScreen = true
+                    }
+                } label: {
+                    Image(systemName: isFullScreen
+                          ? "arrow.down.right.and.arrow.up.left"
+                          : "arrow.up.left.and.arrow.down.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(CMTheme.textSecondary)
+                        .padding(6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                .fill(CMTheme.chipBG)
+                        )
+                }
+                .buttonStyle(CMPressStyle())
+
                 Spacer()
 
                 Button {
@@ -70,7 +98,14 @@ struct WeightMeasurementsView: View {
 
             VStack(spacing: 0) {
                 // MARK: Gelatin Mixture
-                subsectionHeader("Gelatin Mixture")
+                HStack {
+                    Text("Gelatin Mixture").cmSubsectionTitle()
+                    CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
+                        showCorrectionsSection = .gelatin
+                    }
+                    Spacer()
+                }
+                .cmSubsectionPadding()
 
                     // Compute theoretical masses on each scale (mix + container tare)
                     let batchResult = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
@@ -86,15 +121,26 @@ struct WeightMeasurementsView: View {
                     let substrateMass = gelatinMass + sugarMass
                     let substrateVol  = gelatinVol + sugarVol
 
-                    let substrateTare = viewModel.hpSubstrateBeakerID
-                        .map { systemConfig.containerTare(for: $0) } ?? systemConfig.recommendedBeaker(forVolumeML: substrateVol)
-                        .map { systemConfig.containerTare(for: $0.id) } ?? 0
-                    let sugarTare = viewModel.hpSugarMixBeakerID
-                        .map { systemConfig.containerTare(for: $0) } ?? systemConfig.recommendedBeaker(forVolumeML: sugarVol)
-                        .map { systemConfig.containerTare(for: $0.id) } ?? 0
-                    let activTare = viewModel.hpActivationTrayID
-                        .map { systemConfig.containerTare(for: $0) } ?? systemConfig.recommendedBeaker(forVolumeML: activVol)
-                        .map { systemConfig.containerTare(for: $0.id) } ?? 0
+                    let substrateContainerID = viewModel.hpSubstrateBeakerID
+                        ?? systemConfig.recommendedBeaker(forVolumeML: substrateVol)?.id
+                    let sugarContainerID = viewModel.hpSugarMixBeakerID
+                        ?? systemConfig.recommendedBeaker(forVolumeML: sugarVol)?.id
+                    let activContainerID = viewModel.hpActivationTrayID
+                        ?? systemConfig.recommendedBeaker(forVolumeML: activVol)?.id
+
+                    let substrateBeakerTare = substrateContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
+                    let sugarBeakerTare = sugarContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
+                    let activTare = activContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
+
+                    // Stir bar masses for substrate and sugar sections
+                    let substrateStirBarID = viewModel.hpSubstrateStirBarID ?? systemConfig.stirBars.first?.id
+                    let sugarStirBarID = viewModel.hpSugarMixStirBarID ?? systemConfig.stirBars.first?.id
+                    let substrateStirBarMass = substrateStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+                    let sugarStirBarMass = sugarStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+
+                    // Combined tares (beaker + stir bar)
+                    let substrateTare = substrateBeakerTare + substrateStirBarMass
+                    let sugarTare = sugarBeakerTare + sugarStirBarMass
 
                     let substrateMassOnScale = substrateMass + substrateTare
                     let sugarMassOnScale     = sugarMass + sugarTare
@@ -104,48 +150,106 @@ struct WeightMeasurementsView: View {
                     hpSectionBox {
                         hpContainerSelector(
                             label: "Substrate Beaker",
-                            selectedID: $viewModel.hpSubstrateBeakerID
+                            selectedID: Binding(
+                                get: { substrateContainerID },
+                                set: { viewModel.hpSubstrateBeakerID = $0 }
+                            )
+                        )
+                        hpStirBarSelector(
+                            label: "Substrate Stir Bar",
+                            selectedID: Binding(
+                                get: { substrateStirBarID },
+                                set: { viewModel.hpSubstrateStirBarID = $0 }
+                            )
                         )
                         hpScaleSelector(
                             label: "Substrate Scale",
                             selectedID: $viewModel.hpSubstrateScaleID,
                             theoreticalMassOnScale: substrateMassOnScale
                         )
-                        hpContainerTareRow(
-                            "Beaker (Clean)",
-                            containerID: viewModel.hpSubstrateBeakerID
-                        )
-                        subWeightRow("+ Gelatin", value: $viewModel.hpGelatin, resolution: viewModel.hpScaleResolution(for: viewModel.hpSubstrateScaleID, systemConfig: systemConfig))
-                        subWeightRow("+ Water", value: $viewModel.hpGelatinWater, resolution: viewModel.hpScaleResolution(for: viewModel.hpSubstrateScaleID, systemConfig: systemConfig))
-                        hpTotalRow("Total | Gelatin Mixture", value: viewModel.hpGelatinMixtureTotal(systemConfig: systemConfig))
+                        let substrateRes = viewModel.hpScaleResolution(for: viewModel.hpSubstrateScaleID, systemConfig: systemConfig)
+                        let expectedGelatin = substrateTare + batchResult.gelatinMix.components[0].massGrams
+                        let expectedGelatinWater: Double? = viewModel.hpGelatin.map { $0 + batchResult.gelatinMix.components[1].massGrams }
+
+                        hpTareDisplayRow("Beaker + Stir Bar", tare: substrateTare, resolution: substrateRes)
+                        subWeightRow("+ Gelatin", value: $viewModel.hpGelatin, resolution: substrateRes,
+                                     expected: viewModel.hpGelatin == nil ? expectedGelatin : nil)
+                        subWeightRow("+ Water", value: $viewModel.hpGelatinWater, resolution: substrateRes,
+                                     expected: viewModel.hpGelatin != nil && viewModel.hpGelatinWater == nil ? expectedGelatinWater : nil)
+                        // Corrections total (if any corrections have been entered)
+                        if let corrTotal = viewModel.correctionsTotal {
+                            hpTotalRow("Corrections", value: corrTotal)
+                        }
+                        let gelatinNet: Double? = viewModel.hpGelatinWater.map {
+                            ($0 - substrateTare) + (viewModel.correctionsTotal ?? 0)
+                        }
+                        hpTotalRow("Net Total | Gelatin Mixture", value: gelatinNet)
                     }
 
                     // ===== SUGAR MIX SECTION =====
-                    subsectionHeader("Sugar Mixture")
+                    HStack {
+                        Text("Sugar Mixture").cmSubsectionTitle()
+                        CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
+                            showCorrectionsSection = .sugar
+                        }
+                        Spacer()
+                    }
+                    .cmSubsectionPadding()
                     hpSectionBox {
                         hpContainerSelector(
                             label: "Sugar Mix Beaker",
-                            selectedID: $viewModel.hpSugarMixBeakerID
+                            selectedID: Binding(
+                                get: { sugarContainerID },
+                                set: { viewModel.hpSugarMixBeakerID = $0 }
+                            )
+                        )
+                        hpStirBarSelector(
+                            label: "Sugar Mix Stir Bar",
+                            selectedID: Binding(
+                                get: { sugarStirBarID },
+                                set: { viewModel.hpSugarMixStirBarID = $0 }
+                            )
                         )
                         hpScaleSelector(
                             label: "Sugar Mix Scale",
                             selectedID: $viewModel.hpSugarMixScaleID,
                             theoreticalMassOnScale: sugarMassOnScale
                         )
-                        hpContainerTareRow(
-                            "Beaker (Clean)",
-                            containerID: viewModel.hpSugarMixBeakerID
-                        )
-                        subWeightRow("+ Granulated Sugar", value: $viewModel.hpGranulated, resolution: viewModel.hpScaleResolution(for: viewModel.hpSugarMixScaleID, systemConfig: systemConfig))
-                        subWeightRow("+ Glucose Syrup", value: $viewModel.hpGlucoseSyrup, resolution: viewModel.hpScaleResolution(for: viewModel.hpSugarMixScaleID, systemConfig: systemConfig))
-                        subWeightRow("+ Water", value: $viewModel.hpSugarWater, resolution: viewModel.hpScaleResolution(for: viewModel.hpSugarMixScaleID, systemConfig: systemConfig))
-                        hpTotalRow("Total | Sugar Mixture", value: viewModel.hpSugarMixtureTotal(systemConfig: systemConfig))
+                        let sugarRes = viewModel.hpScaleResolution(for: viewModel.hpSugarMixScaleID, systemConfig: systemConfig)
+                        let mGranulated = batchResult.sugarMix.components[1].massGrams * sugarOverage
+                        let mGlucoseSyrup = batchResult.sugarMix.components[0].massGrams * sugarOverage
+                        let mSugarWater = batchResult.sugarMix.components[2].massGrams * sugarOverage
+                        let expectedGranulated = sugarTare + mGranulated
+                        let expectedGlucose: Double? = viewModel.hpGranulated.map { $0 + mGlucoseSyrup }
+                        let expectedSugarWater: Double? = (viewModel.hpGlucoseSyrup ?? viewModel.hpGranulated).map { $0 + mSugarWater }
+
+                        hpTareDisplayRow("Beaker + Stir Bar", tare: sugarTare, resolution: sugarRes)
+                        subWeightRow("+ Granulated Sugar", value: $viewModel.hpGranulated, resolution: sugarRes,
+                                     expected: viewModel.hpGranulated == nil ? expectedGranulated : nil)
+                        subWeightRow("+ Glucose Syrup", value: $viewModel.hpGlucoseSyrup, resolution: sugarRes,
+                                     expected: viewModel.hpGranulated != nil && viewModel.hpGlucoseSyrup == nil ? expectedGlucose : nil)
+                        subWeightRow("+ Water", value: $viewModel.hpSugarWater, resolution: sugarRes,
+                                     expected: viewModel.hpGlucoseSyrup != nil && viewModel.hpSugarWater == nil ? expectedSugarWater : nil)
+                        // Corrections total (if any corrections have been entered)
+                        if let sugarCorrTotal = viewModel.sugarCorrectionsTotal {
+                            hpTotalRow("Corrections", value: sugarCorrTotal)
+                        }
+                        let sugarNet: Double? = viewModel.hpSugarWater.map {
+                            ($0 - sugarTare) + (viewModel.sugarCorrectionsTotal ?? 0)
+                        }
+                        hpTotalRow("Net Total | Sugar Mixture", value: sugarNet)
                     }
 
                     // ===== TRANSFER ROW =====
+                    let expectedSugarTransfer: Double? = viewModel.hpGelatinWater.map { $0 + batchResult.sugarMix.totalMassGrams }
                     HStack(spacing: 6) {
-                        Text("Total | Substrate + Sugar Transfer").cmHpLabel(color: systemConfig.designPrimaryAccent)
+                        Text("+ Sugar Mixture").cmHpLabel(color: systemConfig.designPrimaryAccent)
                         Spacer()
+                        if let expected = expectedSugarTransfer, viewModel.hpSubstrateSugarTransfer == nil {
+                            Text(String(format: "%.3f", expected))
+                                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                .foregroundStyle(systemConfig.designSecondaryAccent.opacity(0.7))
+                        }
                         OptionalNumericField(value: $viewModel.hpSubstrateSugarTransfer, decimals: MeasurementResolution.thousandthGram.decimalPlaces)
                             .multilineTextAlignment(.trailing)
                             .cmHpValueSlot(color: systemConfig.designPrimaryAccent)
@@ -158,33 +262,82 @@ struct WeightMeasurementsView: View {
                     .cmExpandTransition()
 
                     // ===== ACTIVATION MIX SECTION =====
-                    subsectionHeader("Activation Mixture")
+                    HStack {
+                        Text("Activation Mixture").cmSubsectionTitle()
+                        CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
+                            showCorrectionsSection = .activation
+                        }
+                        Spacer()
+                    }
+                    .cmSubsectionPadding()
                     hpSectionBox {
                         hpContainerSelector(
                             label: "Activation Tray",
-                            selectedID: $viewModel.hpActivationTrayID
+                            selectedID: Binding(
+                                get: { activContainerID },
+                                set: { viewModel.hpActivationTrayID = $0 }
+                            )
                         )
                         hpScaleSelector(
                             label: "Activation Scale",
                             selectedID: $viewModel.hpActivationScaleID,
                             theoreticalMassOnScale: activMassOnScale
                         )
-                        hpContainerTareRow(
-                            "Container (Clean)",
-                            containerID: viewModel.hpActivationTrayID
-                        )
-                        subWeightRow("+ Citric Acid", value: $viewModel.hpCitricAcid, resolution: viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig))
-                        subWeightRow("+ Activation Water", value: $viewModel.hpActivationWater, resolution: viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig))
-                        subWeightRow("+ KSorbate", value: $viewModel.hpKSorbate, resolution: viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig))
-                        subWeightRow("+ Flavor Oils + Terps + Active", value: $viewModel.hpFlavorOilsTerpsActive, resolution: viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig))
-                        subWeightRow("- Activation Tray (Residue)", value: $viewModel.hpActivationTrayResidue, resolution: viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig))
-                        hpTotalRow("Total | Activation Mixture", value: viewModel.hpActivationMixtureTotal(systemConfig: systemConfig))
+                        let activRes = viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig)
+                        let activComps = batchResult.activationMix.components
+                        let mCitric = activComps.first(where: { $0.label == "Citric Acid" })?.massGrams ?? 0
+                        let mActivWater = activComps.first(where: { $0.label == "Activation Water" })?.massGrams ?? 0
+                        let mKSorbate = activComps.first(where: { $0.label == "Potassium Sorbate" })?.massGrams ?? 0
+                        let mFlavorOilsTerps = activMass - mCitric - mActivWater - mKSorbate
+
+                        let expectedCitric = activTare + mCitric
+                        let expectedActivWater: Double? = viewModel.hpCitricAcid.map { $0 + mActivWater }
+                        let expectedKSorbate: Double? = viewModel.hpActivationWater.map { $0 + mKSorbate }
+                        let expectedFlavorOilsTerps: Double? = viewModel.hpKSorbate.map { $0 + mFlavorOilsTerps }
+
+                        hpTareDisplayRow("Container (Clean)", tare: activTare, resolution: activRes)
+                        subWeightRow("+ Citric Acid", value: $viewModel.hpCitricAcid, resolution: activRes,
+                                     expected: viewModel.hpCitricAcid == nil ? expectedCitric : nil)
+                        subWeightRow("+ Activation Water", value: $viewModel.hpActivationWater, resolution: activRes,
+                                     expected: viewModel.hpCitricAcid != nil && viewModel.hpActivationWater == nil ? expectedActivWater : nil)
+                        subWeightRow("+ KSorbate", value: $viewModel.hpKSorbate, resolution: activRes,
+                                     expected: viewModel.hpActivationWater != nil && viewModel.hpKSorbate == nil ? expectedKSorbate : nil)
+                        subWeightRow("+ Flavor Oils + Terps + Active", value: $viewModel.hpFlavorOilsTerpsActive, resolution: activRes,
+                                     expected: viewModel.hpKSorbate != nil && viewModel.hpFlavorOilsTerpsActive == nil ? expectedFlavorOilsTerps : nil)
+                        subWeightRow("- Activation Tray (Residue)", value: $viewModel.hpActivationTrayResidue, resolution: activRes)
+                        let residueLoss: Double? = viewModel.hpActivationTrayResidue.map { $0 - activTare }
+                        hpTotalRow("Residue Loss", value: residueLoss)
+                        // Corrections total (if any corrections have been entered)
+                        if let activCorrTotal = viewModel.activationCorrectionsTotal {
+                            hpTotalRow("Corrections", value: activCorrTotal)
+                        }
+                        let activNetTotal: Double? = {
+                            guard let last = viewModel.hpFlavorOilsTerpsActive else { return nil }
+                            let loss = residueLoss ?? 0
+                            return (last - activTare) - loss + (viewModel.activationCorrectionsTotal ?? 0)
+                        }()
+                        hpTotalRow("Net Total | Activation Mixture", value: activNetTotal)
                     }
 
-                    // ===== SUBSTRATE + ACTIVATION TRANSFER =====
+                    // ===== ACTIVATION TRANSFER =====
+                    let activNetTotal: Double? = {
+                        guard let last = viewModel.hpFlavorOilsTerpsActive else { return nil }
+                        let residue = viewModel.hpActivationTrayResidue.map { $0 - activTare } ?? 0
+                        return (last - activTare) - residue + (viewModel.activationCorrectionsTotal ?? 0)
+                    }()
+                    let expectedActivTransfer: Double? = {
+                        guard let sugarTransfer = viewModel.hpSubstrateSugarTransfer,
+                              let activNet = activNetTotal else { return nil }
+                        return sugarTransfer + activNet
+                    }()
                     HStack(spacing: 6) {
-                        Text("Total | Substrate + Activation Transfer").cmHpLabel(color: systemConfig.designPrimaryAccent)
+                        Text("+ Activation Mixture").cmHpLabel(color: systemConfig.designPrimaryAccent)
                         Spacer()
+                        if let expected = expectedActivTransfer, viewModel.hpSubstrateActivationTransfer == nil {
+                            Text(String(format: "%.3f", expected))
+                                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                .foregroundStyle(systemConfig.designSecondaryAccent.opacity(0.7))
+                        }
                         OptionalNumericField(value: $viewModel.hpSubstrateActivationTransfer, decimals: MeasurementResolution.thousandthGram.decimalPlaces)
                             .multilineTextAlignment(.trailing)
                             .cmHpValueSlot(color: systemConfig.designPrimaryAccent)
@@ -196,34 +349,86 @@ struct WeightMeasurementsView: View {
                     .cmHpSubRowPadding()
                     .cmExpandTransition()
 
-                    weightRow("Substrate Beaker (Residue)", value: $viewModel.weightBeakerResidue, resolution: systemConfig.resolutionBeakerResidue)
+                    // ===== NET TOTAL GUMMY MIXTURE =====
+                    let gummyMixtureTotal: Double? = viewModel.hpSubstrateActivationTransfer.map { $0 - substrateTare }
+                    hpTotalRow("Net Total | Gummy Mixture", value: gummyMixtureTotal)
 
-                // Corrections row
-                correctionsRow
+                    weightRow("Substrate Beaker (Residue)", value: $viewModel.weightBeakerResidue, resolution: systemConfig.resolutionBeakerResidue)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
                 // MARK: Transfer Gummy Mixture to Trays
                 subsectionHeader("Transfer Gummy Mixture to Trays")
-                weightRow("Syringe (Clean)",            value: $viewModel.weightSyringeEmpty,     resolution: systemConfig.resolutionSyringeEmpty)
-                ThemedDivider(indent: 20).padding(.vertical, 4)
-                weightRow("Syringe + Gummy Mix",        value: $viewModel.weightSyringeWithMix,   resolution: systemConfig.resolutionSyringeWithMix)
-                volumeRow("Syringe + Gummy Mix",        value: $viewModel.volumeSyringeGummyMix)
-                ThemedDivider(indent: 20).padding(.vertical, 4)
-                weightRow("Syringe + Residue",          value: $viewModel.weightSyringeResidue,   resolution: systemConfig.resolutionSyringeResidue)
-                weightRow("Beaker + Residue",           value: $viewModel.weightBeakerResidue,    resolution: systemConfig.resolutionBeakerResidue)
+                    let transferSyringeID = viewModel.hpTransferSyringeID
+                        ?? systemConfig.syringes.first?.id
+                    let transferTare = transferSyringeID.map { systemConfig.syringeTare(for: $0) } ?? 0
+                    let transferRes = viewModel.hpScaleResolution(for: viewModel.hpTransferScaleID, systemConfig: systemConfig)
 
-                ThemedDivider(indent: 20).padding(.vertical, 4)
+                    hpSectionBox {
+                        hpSyringeSelector(
+                            label: "Transfer Syringe",
+                            selectedID: Binding(
+                                get: { transferSyringeID },
+                                set: { viewModel.hpTransferSyringeID = $0 }
+                            )
+                        )
+                        hpScaleSelector(
+                            label: "Transfer Scale",
+                            selectedID: $viewModel.hpTransferScaleID
+                        )
 
-                weightRow("Tray (Clean)",               value: $viewModel.weightTrayClean,        resolution: .thousandthGram)
-                weightRow("Tray + Residue",             value: $viewModel.weightTrayPlusResidue,  resolution: .thousandthGram)
+                        hpTareDisplayRow("Syringe (Clean)", tare: transferTare, resolution: transferRes)
+                        subWeightRow("+ Gummy Mix", value: $viewModel.weightSyringeWithMix, resolution: transferRes)
+                        subVolumeRow("Gummy Mix Volume", value: $viewModel.volumeSyringeGummyMix)
+                        subWeightRow("- Syringe (Residue)", value: $viewModel.weightSyringeResidue, resolution: transferRes)
+
+                        let residueLoss: Double? = viewModel.weightSyringeResidue.map { $0 - transferTare }
+                        hpTotalRow("Syringe Residue Loss", value: residueLoss)
+
+                        let netTransferred: Double? = {
+                            guard let mixMass = viewModel.weightSyringeWithMix else { return nil }
+                            let loss = residueLoss ?? 0
+                            return (mixMass - transferTare) - loss
+                        }()
+                        hpTotalRow("Net Gummy Mix Transferred", value: netTransferred)
+                    }
+                    Text("Measure the syringe with the locking cap and syringe tip attached to ensure tare measurements are consistent.")
+                        .cmFootnote()
+                        .padding(.horizontal, 20)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
                 // MARK: Molds
                 subsectionHeader("Molds")
-                intRow("Molds Filled",                  value: $viewModel.weightMoldsFilled)
-                weightRow("Extra Gummy Mix",            value: $viewModel.extraGummyMixGrams,        resolution: .thousandthGram)
+                    let moldsTrayID = viewModel.hpMoldsTrayID
+                        ?? systemConfig.trays.first?.id
+                    let moldsTare = moldsTrayID.map { systemConfig.trayTare(for: $0) } ?? 0
+                    let moldsRes = viewModel.hpScaleResolution(for: viewModel.hpMoldsScaleID, systemConfig: systemConfig)
+
+                    hpSectionBox {
+                        hpTraySelector(
+                            label: "Mold Tray",
+                            selectedID: Binding(
+                                get: { moldsTrayID },
+                                set: { viewModel.hpMoldsTrayID = $0 }
+                            )
+                        )
+                        hpScaleSelector(
+                            label: "Molds Scale",
+                            selectedID: $viewModel.hpMoldsScaleID
+                        )
+
+                        hpTareDisplayRow("Tray (Clean)", tare: moldsTare, resolution: moldsRes)
+                        subWeightRow("+ Tray Residue", value: $viewModel.weightTrayPlusResidue, resolution: moldsRes)
+
+                        let trayResidueLoss: Double? = viewModel.weightTrayPlusResidue.map { $0 - moldsTare }
+                        hpTotalRow("Tray Residue", value: trayResidueLoss)
+
+                        ThemedDivider(indent: 36).padding(.vertical, 4)
+
+                        subIntRow("Molds Filled", value: $viewModel.weightMoldsFilled)
+                        subAccentWeightRow("− Extra Gummy Mix", value: $viewModel.extraGummyMixGrams, resolution: moldsRes)
+                    }
 
                 // Fine print at bottom
                 Text("The Substrate is defined as the primary beaker + all ingredients that have been added to the mixture.")
@@ -245,14 +450,31 @@ struct WeightMeasurementsView: View {
             }
         }
         .overlay {
-            if showCorrections {
-                CorrectionsView {
-                    withAnimation(.cmSpring) { showCorrections = false }
+            if let section = showCorrectionsSection {
+                CorrectionsView(section: section) {
+                    withAnimation(.cmSpring) { showCorrectionsSection = nil }
                 }
             }
         }
+        .fullScreenCover(isPresented: $showFullScreen) {
+            WeightMeasurementsFullScreenView()
+                .environment(viewModel)
+                .environment(systemConfig)
+        }
         .sheet(item: $containerPickerRow) { row in
             ContainerPickerSheet(row: row)
+                .environment(systemConfig)
+        }
+        .sheet(item: $syringePickerRow) { row in
+            SyringePickerSheet(row: row)
+                .environment(systemConfig)
+        }
+        .sheet(item: $trayPickerRow) { row in
+            TrayPickerSheet(row: row)
+                .environment(systemConfig)
+        }
+        .sheet(item: $stirBarPickerRow) { row in
+            StirBarPickerSheet(row: row)
                 .environment(systemConfig)
         }
         .sheet(item: $scalePickerRow) { row in
@@ -268,48 +490,8 @@ struct WeightMeasurementsView: View {
         }
     }
 
-    private var fuchsia: Color { systemConfig.designPrimaryAccent }
 
-    private var correctionsRow: some View {
-        HStack(spacing: 6) {
-            Text("Corrections")
-                .cmRowLabel()
 
-            // Plus/minus button to open corrections page
-            Button {
-                CMHaptic.light()
-                showCorrections = true
-            } label: {
-                Image(systemName: "plus.forwardslash.minus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(fuchsia)
-                    .frame(width: 28, height: 28)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(fuchsia.opacity(0.12))
-                    )
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            // Display total if available
-            Group {
-                if let total = viewModel.correctionsTotal {
-                    Text(String(format: "%.3f", total))
-                        .foregroundStyle(fuchsia)
-                } else {
-                    Text("—")
-                        .foregroundStyle(CMTheme.textTertiary)
-                }
-            }
-            .cmValueSlot(width: 80)
-
-            Text("g")
-                .cmUnitSlot()
-        }
-        .cmDataRowPadding()
-    }
 
     private func subsectionHeader(_ title: String) -> some View {
         HStack {
@@ -333,14 +515,63 @@ struct WeightMeasurementsView: View {
     }
 
     /// Indented sub-row for high-precision mode fields.
-    private func subWeightRow(_ label: String, value: Binding<Double?>, resolution: MeasurementResolution) -> some View {
+    /// `expected` is the theoretical cumulative scale reading shown in secondary accent next to input.
+    private func subWeightRow(_ label: String, value: Binding<Double?>, resolution: MeasurementResolution, expected: Double? = nil) -> some View {
         let decimals = resolution.decimalPlaces
         return HStack(spacing: 6) {
             Text(label).cmHpLabel(color: measurementColor)
             Spacer()
+            if let expected {
+                Text(String(format: "%.\(decimals)f", expected))
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(systemConfig.designSecondaryAccent.opacity(0.7))
+            }
             OptionalNumericField(value: value, decimals: decimals)
                 .multilineTextAlignment(.trailing)
                 .cmHpValueSlot(color: measurementColor)
+            Text("g")
+                .cmMono11()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: 28, alignment: .leading)
+        }
+        .cmHpSubRowPadding()
+        .cmExpandTransition()
+    }
+
+    /// Indented sub-row for high-precision mode volume fields (mL units, blue text).
+    /// Uses a shippingbox icon to indicate this is an informational volume measurement
+    /// that does not participate in the mass transfer calculation.
+    private func subVolumeRow(_ label: String, value: Binding<Double?>) -> some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "shippingbox")
+                    .font(.system(size: 10))
+                    .foregroundStyle(measurementColor)
+                Text(label).cmHpLabel(color: measurementColor)
+            }
+            Spacer()
+            OptionalNumericField(value: value, decimals: 3)
+                .multilineTextAlignment(.trailing)
+                .cmHpValueSlot(color: measurementColor)
+            Text("mL")
+                .cmMono11()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: 28, alignment: .leading)
+        }
+        .cmHpSubRowPadding()
+        .cmExpandTransition()
+    }
+
+    /// Read-only sub-row showing an equipment item's tare mass from settings.
+    private func hpTareDisplayRow(_ label: String, tare: Double, resolution: MeasurementResolution) -> some View {
+        let decimals = resolution.decimalPlaces
+        return HStack(spacing: 6) {
+            Text(label).cmHpLabel(color: measurementColor)
+            Spacer()
+            Text(String(format: "%.\(decimals)f", tare))
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(measurementColor)
+                .frame(width: 80, alignment: .trailing)
             Text("g")
                 .cmMono11()
                 .foregroundStyle(CMTheme.textTertiary)
@@ -375,6 +606,88 @@ struct WeightMeasurementsView: View {
         .cmDataRowPadding()
     }
 
+    // MARK: - HP Syringe Helpers
+
+    /// Syringe selector row: tappable capsule that opens the wheel picker sheet.
+    private func hpSyringeSelector(label: String, selectedID: Binding<String?>) -> some View {
+        let displayName = selectedID.wrappedValue
+            .flatMap { id in systemConfig.syringes.first { $0.id == id }?.name }
+            ?? "Select..."
+
+        return Button {
+            CMHaptic.light()
+            syringePickerRow = SyringePickerRow(
+                label: label,
+                currentID: selectedID.wrappedValue,
+                onSelect: { newID in selectedID.wrappedValue = newID }
+            )
+        } label: {
+            CMEquipmentCapsule(icon: "syringe.fill", displayName: displayName, color: measurementColor)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20).padding(.vertical, 3)
+        .cmExpandTransition()
+    }
+
+    // MARK: - HP Tray Helpers
+
+    /// Tray selector row: tappable capsule that opens the wheel picker sheet.
+    private func hpTraySelector(label: String, selectedID: Binding<String?>) -> some View {
+        let displayName = selectedID.wrappedValue
+            .flatMap { id in systemConfig.trays.first { $0.id == id }?.name }
+            ?? "Select..."
+
+        return Button {
+            CMHaptic.light()
+            trayPickerRow = TrayPickerRow(
+                label: label,
+                currentID: selectedID.wrappedValue,
+                onSelect: { newID in selectedID.wrappedValue = newID }
+            )
+        } label: {
+            CMEquipmentCapsule(icon: "tray.fill", displayName: displayName, color: measurementColor)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20).padding(.vertical, 3)
+        .cmExpandTransition()
+    }
+
+    /// HP-styled integer row (molds filled count).
+    private func subIntRow(_ label: String, value: Binding<Double?>) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmHpLabel(color: measurementColor)
+            Spacer()
+            OptionalNumericField(value: value, decimals: 0)
+                .multilineTextAlignment(.trailing)
+                .cmHpValueSlot(color: measurementColor)
+            Text("#")
+                .cmMono11()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: 28, alignment: .leading)
+        }
+        .cmHpSubRowPadding()
+        .cmExpandTransition()
+    }
+
+    /// HP-styled weight sub-row in primary accent color (for "− Extra Gummy Mix").
+    private func subAccentWeightRow(_ label: String, value: Binding<Double?>, resolution: MeasurementResolution) -> some View {
+        let accentColor = systemConfig.designPrimaryAccent
+        let decimals = resolution.decimalPlaces
+        return HStack(spacing: 6) {
+            Text(label).cmHpLabel(color: accentColor)
+            Spacer()
+            OptionalNumericField(value: value, decimals: decimals)
+                .multilineTextAlignment(.trailing)
+                .cmHpValueSlot(color: accentColor)
+            Text("g")
+                .cmMono11()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: 28, alignment: .leading)
+        }
+        .cmHpSubRowPadding()
+        .cmExpandTransition()
+    }
+
     // MARK: - HP Container Helpers
 
     /// Container selector row: tappable capsule that opens the wheel picker sheet.
@@ -391,28 +704,28 @@ struct WeightMeasurementsView: View {
                 onSelect: { newID in selectedID.wrappedValue = newID }
             )
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: "flask.fill")
-                    .font(.system(size: 11))
-                    .foregroundStyle(measurementColor.opacity(0.6))
-                Text(displayName)
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(measurementColor)
-                    .lineLimit(1)
-                Spacer()
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(measurementColor.opacity(0.5))
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(measurementColor.opacity(0.06))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(measurementColor.opacity(0.15), lineWidth: 0.5)
-                    )
+            CMEquipmentCapsule(icon: "flask.fill", displayName: displayName, color: measurementColor)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20).padding(.vertical, 3)
+        .cmExpandTransition()
+    }
+
+    /// Stir bar selector row: tappable capsule that opens the wheel picker sheet.
+    private func hpStirBarSelector(label: String, selectedID: Binding<String?>) -> some View {
+        let displayName = selectedID.wrappedValue
+            .flatMap { id in systemConfig.stirBars.first { $0.id == id }?.name }
+            ?? "Select..."
+
+        return Button {
+            CMHaptic.light()
+            stirBarPickerRow = StirBarPickerRow(
+                label: label,
+                currentID: selectedID.wrappedValue,
+                onSelect: { newID in selectedID.wrappedValue = newID }
             )
+        } label: {
+            CMEquipmentCapsule(icon: "wand.and.rays", displayName: displayName, color: measurementColor)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 20).padding(.vertical, 3)
@@ -443,28 +756,7 @@ struct WeightMeasurementsView: View {
                     onSelect: { newID in selectedID.wrappedValue = newID }
                 )
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "scalemass.fill")
-                        .font(.system(size: 11))
-                        .foregroundStyle(measurementColor.opacity(0.6))
-                    Text(displayName)
-                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(measurementColor)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(measurementColor.opacity(0.5))
-                }
-                .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(measurementColor.opacity(0.06))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .strokeBorder(measurementColor.opacity(0.15), lineWidth: 0.5)
-                        )
-                )
+                CMEquipmentCapsule(icon: "scalemass.fill", displayName: displayName, color: measurementColor)
             }
             .buttonStyle(.plain)
 
@@ -480,46 +772,6 @@ struct WeightMeasurementsView: View {
             }
         }
         .padding(.horizontal, 20).padding(.vertical, 3)
-        .cmExpandTransition()
-    }
-
-    /// Auto-populated tare row with (i) info button.
-    private func hpContainerTareRow(_ label: String, containerID: String?) -> some View {
-        let tare: Double? = containerID.map { systemConfig.containerTare(for: $0) }
-
-        return HStack(spacing: 6) {
-            Text(label).cmHpLabel(color: measurementColor)
-
-            // Info button
-            if let id = containerID {
-                Button {
-                    CMHaptic.light()
-                    showContainerInfo = id
-                } label: {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(measurementColor.opacity(0.5))
-                }
-                .buttonStyle(.plain)
-            }
-
-            Spacer()
-
-            Group {
-                if let t = tare {
-                    Text(String(format: "%.3f", t))
-                } else {
-                    Text("—")
-                }
-            }
-            .cmHpValueSlot(color: measurementColor)
-
-            Text("g")
-                .cmMono11()
-                .foregroundStyle(CMTheme.textTertiary)
-                .frame(width: 28, alignment: .leading)
-        }
-        .cmHpSubRowPadding()
         .cmExpandTransition()
     }
 
@@ -571,6 +823,65 @@ struct WeightMeasurementsView: View {
     /// Thin divider between HP mix sections.
     private func hpSectionDivider() -> some View {
         ThemedDivider(indent: 36).padding(.vertical, 4)
+    }
+}
+
+// MARK: - Full Screen Batch Measurements
+
+struct WeightMeasurementsFullScreenView: View {
+    @Environment(BatchConfigViewModel.self) private var viewModel
+    @Environment(SystemConfig.self) private var systemConfig
+    @Environment(\.dismiss) private var dismiss
+
+    private let scaleFactor: CGFloat = 3.0
+    @State private var contentHeight: CGFloat = 0
+
+    var body: some View {
+        NavigationStack {
+            GeometryReader { geo in
+                let narrowWidth = geo.size.width / scaleFactor
+                ScrollView([.horizontal, .vertical]) {
+                    WeightMeasurementsView(isFullScreen: true)
+                        .frame(width: narrowWidth)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .background(
+                            GeometryReader { inner in
+                                Color.clear.preference(
+                                    key: ContentHeightKey.self,
+                                    value: inner.size.height
+                                )
+                            }
+                        )
+                        .scaleEffect(scaleFactor, anchor: .topLeading)
+                        .frame(
+                            width: geo.size.width,
+                            height: contentHeight * scaleFactor,
+                            alignment: .topLeading
+                        )
+                }
+                .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
+            }
+            .background(CMTheme.pageBG)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(CMTheme.textSecondary)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

@@ -13,60 +13,46 @@ import SwiftUI
 struct CorrectionsView: View {
     @Environment(BatchConfigViewModel.self) private var viewModel
     @Environment(SystemConfig.self) private var systemConfig
+    let section: BatchConfigViewModel.CorrectionSection
     let onDismiss: () -> Void
+    @State private var pendingDeleteID: UUID? = nil
 
     private var fuchsia: Color { systemConfig.designPrimaryAccent }
+
+    private var entries: [BatchConfigViewModel.CorrectionEntry] {
+        viewModel.correctionsArray(for: section)
+    }
+
+    private var isLocked: Bool {
+        viewModel.correctionsLocked(for: section)
+    }
+
+    private var total: Double? {
+        viewModel.correctionsTotalFor(section)
+    }
 
     var body: some View {
         @Bindable var viewModel = viewModel
 
-        ZStack {
-            // Dimmed backdrop
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-                .onTapGesture { onDismiss() }
-
-            // Card
-            VStack(spacing: 0) {
-                // Header — always interactive (never disabled)
-                HStack {
-                    Text("Corrections")
-                        .font(.headline)
-                        .foregroundStyle(fuchsia)
-
-                    // Lock button
-                    Button {
-                        CMHaptic.light()
-                        viewModel.correctionsLocked.toggle()
-                    } label: {
-                        Image(systemName: viewModel.correctionsLocked ? "lock.fill" : "lock.open.fill")
-                            .cmLockIcon(isLocked: viewModel.correctionsLocked, color: systemConfig.designAlert)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    // Close button
-                    Button {
-                        CMHaptic.light()
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(CMTheme.textTertiary)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+        let entriesBinding: Binding<[BatchConfigViewModel.CorrectionEntry]> = Binding(
+            get: { viewModel.correctionsArray(for: section) },
+            set: { newValue in
+                switch section {
+                case .gelatin:    viewModel.corrections = newValue
+                case .sugar:      viewModel.sugarCorrections = newValue
+                case .activation: viewModel.activationCorrections = newValue
                 }
-                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
-                .zIndex(1)
+            }
+        )
 
-                ThemedDivider()
-
-                // Column headers + rows + total (lockable content)
+        CMPopupShell(
+            title: "\(section.rawValue) Corrections",
+            titleColor: fuchsia,
+            onDismiss: onDismiss,
+            lockAction: { viewModel.setCorrectionsLocked(!isLocked, for: section) },
+            isLocked: isLocked,
+            lockColor: systemConfig.designAlert
+        ) {
                 VStack(spacing: 0) {
                     HStack(spacing: 4) {
                         Text("Name")
@@ -86,8 +72,8 @@ struct CorrectionsView: View {
                     // Correction rows
                     ScrollView {
                         VStack(spacing: 6) {
-                            ForEach(Array(viewModel.corrections.enumerated()), id: \.element.id) { index, _ in
-                                correctionRow(index: index)
+                            ForEach(Array(entries.enumerated()), id: \.element.id) { index, _ in
+                                correctionRow(index: index, entries: entriesBinding)
                             }
                         }
                         .padding(.horizontal, 16).padding(.vertical, 4)
@@ -95,11 +81,11 @@ struct CorrectionsView: View {
                     .frame(maxHeight: 300)
 
                     // Add row button
-                    if !viewModel.correctionsLocked {
+                    if !isLocked {
                         HStack(spacing: 12) {
                             Button {
                                 CMHaptic.light()
-                                withAnimation(.cmSpring) { viewModel.addCorrection() }
+                                withAnimation(.cmSpring) { viewModel.addCorrection(for: section) }
                             } label: {
                                 HStack(spacing: 4) {
                                     Image(systemName: "plus.circle.fill")
@@ -125,7 +111,7 @@ struct CorrectionsView: View {
                             .foregroundStyle(fuchsia)
                         Spacer()
                         Group {
-                            if let total = viewModel.correctionsTotal {
+                            if let total = total {
                                 Text(String(format: "%.3f", total))
                                     .foregroundStyle(fuchsia)
                             } else {
@@ -142,20 +128,31 @@ struct CorrectionsView: View {
                     .padding(.horizontal, 16).padding(.vertical, 10)
                     .background(fuchsia.opacity(0.08))
                 }
-                .allowsHitTesting(!viewModel.correctionsLocked)
-                .opacity(viewModel.correctionsLocked ? 0.6 : 1.0)
-                .animation(.cmSpring, value: viewModel.correctionsLocked)
-            }
-            .cmModalCard()
+                .allowsHitTesting(!isLocked)
+                .opacity(isLocked ? 0.6 : 1.0)
+                .animation(.cmSpring, value: isLocked)
         }
-        .transition(.opacity)
+        .alert("Delete Row?", isPresented: Binding(
+            get: { pendingDeleteID != nil },
+            set: { if !$0 { pendingDeleteID = nil } }
+        )) {
+            Button("Cancel", role: .cancel) { pendingDeleteID = nil }
+            Button("Delete", role: .destructive) {
+                if let id = pendingDeleteID {
+                    CMHaptic.medium()
+                    withAnimation(.cmSpring) { viewModel.removeCorrection(id: id, for: section) }
+                }
+                pendingDeleteID = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete this correction row?")
+        }
     }
 
-    private func correctionRow(index: Int) -> some View {
-        @Bindable var viewModel = viewModel
+    private func correctionRow(index: Int, entries: Binding<[BatchConfigViewModel.CorrectionEntry]>) -> some View {
         return HStack(spacing: 4) {
             // Editable name
-            TextField("Name", text: $viewModel.corrections[index].label)
+            TextField("Name", text: entries[index].label)
                 .cmMono11()
                 .foregroundStyle(CMTheme.textPrimary)
                 .frame(width: 80)
@@ -164,18 +161,18 @@ struct CorrectionsView: View {
             Spacer()
 
             // Initial mass
-            OptionalNumericField(value: $viewModel.corrections[index].initialMass, decimals: 3)
+            OptionalNumericField(value: entries[index].initialMass, decimals: 3)
                 .multilineTextAlignment(.trailing)
                 .cmValidationSlot()
 
             // Final mass
-            OptionalNumericField(value: $viewModel.corrections[index].finalMass, decimals: 3)
+            OptionalNumericField(value: entries[index].finalMass, decimals: 3)
                 .multilineTextAlignment(.trailing)
                 .cmValidationSlot()
 
             // Computed difference
             Group {
-                if let diff = viewModel.corrections[index].difference {
+                if let diff = entries.wrappedValue[index].difference {
                     Text(String(format: "%.3f", diff))
                         .foregroundStyle(fuchsia)
                 } else {
@@ -186,11 +183,10 @@ struct CorrectionsView: View {
             .cmValidationSlot(width: 60)
 
             // Remove button
-            if !viewModel.correctionsLocked && viewModel.corrections.count > 1 {
+            if !isLocked && entries.wrappedValue.count > 1 {
                 Button {
                     CMHaptic.light()
-                    let id = viewModel.corrections[index].id
-                    withAnimation(.cmSpring) { viewModel.removeCorrection(id: id) }
+                    pendingDeleteID = entries.wrappedValue[index].id
                 } label: {
                     Image(systemName: "minus.circle.fill")
                         .font(.system(size: 14))

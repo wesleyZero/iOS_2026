@@ -209,11 +209,22 @@ struct FlavorOilPickerView: View {
                         }
                     }
                     .pickerStyle(.wheel)
+                    .tint(systemConfig.designSecondaryAccent)
                     .frame(width: 80, height: 100)
                     .clipped()
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 6)
+
+            if oils.count >= 3 {
+                (Text(String(format: "%.0f%%", maxSliderPercent))
+                    .foregroundStyle(systemConfig.designSecondaryAccent)
+                + Text(" is the concentration of your most concentrated flavor")
+                    .foregroundStyle(CMTheme.textTertiary))
+                .cmMono10()
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
+            }
 
             ThemedDivider()
 
@@ -454,11 +465,22 @@ struct TerpenePickerView: View {
                         }
                     }
                     .pickerStyle(.wheel)
+                    .tint(systemConfig.designSecondaryAccent)
                     .frame(width: 80, height: 100)
                     .clipped()
                 }
             }
             .padding(.horizontal, 16).padding(.vertical, 6)
+
+            if terpenes.count >= 3 {
+                (Text(String(format: "%.0f%%", maxSliderPercent))
+                    .foregroundStyle(systemConfig.designSecondaryAccent)
+                + Text(" is the concentration of your most concentrated terpene")
+                    .foregroundStyle(CMTheme.textTertiary))
+                .cmMono10()
+                .padding(.horizontal, 20)
+                .padding(.bottom, 4)
+            }
 
             ThemedDivider()
 

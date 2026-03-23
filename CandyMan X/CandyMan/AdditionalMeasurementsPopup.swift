@@ -21,53 +21,14 @@ struct AdditionalMeasurementsPopup: View {
     var body: some View {
         @Bindable var viewModel = viewModel
 
-        ZStack {
-            // Dimmed backdrop
-            Color.black.opacity(0.55)
-                .ignoresSafeArea()
-                .onTapGesture { onDismiss() }
-
-            // Card
-            VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Text("Additional Measurements")
-                        .font(.headline)
-                        .foregroundStyle(systemConfig.designTitle)
-
-                    // Lock button
-                    Button {
-                        CMHaptic.light()
-                        viewModel.additionalMeasurementsLocked.toggle()
-                    } label: {
-                        Image(systemName: viewModel.additionalMeasurementsLocked ? "lock.fill" : "lock.open.fill")
-                            .cmLockIcon(isLocked: viewModel.additionalMeasurementsLocked, color: systemConfig.designAlert)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    // Close button
-                    Button {
-                        CMHaptic.light()
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundStyle(CMTheme.textTertiary)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
-                .zIndex(1)
-
-                ThemedDivider()
-
-                // Column headers + rows + total (lockable content)
+        CMPopupShell(
+            title: "Additional Measurements",
+            titleColor: systemConfig.designTitle,
+            onDismiss: onDismiss,
+            lockAction: { viewModel.additionalMeasurementsLocked.toggle() },
+            isLocked: viewModel.additionalMeasurementsLocked,
+            lockColor: systemConfig.designAlert
+        ) {
                 VStack(spacing: 0) {
                     HStack(spacing: 4) {
                         Text("Label")
@@ -146,10 +107,7 @@ struct AdditionalMeasurementsPopup: View {
                 .allowsHitTesting(!viewModel.additionalMeasurementsLocked)
                 .opacity(viewModel.additionalMeasurementsLocked ? 0.6 : 1.0)
                 .animation(.cmSpring, value: viewModel.additionalMeasurementsLocked)
-            }
-            .cmModalCard()
         }
-        .transition(.opacity)
     }
 
     private func measurementRow(index: Int) -> some View {

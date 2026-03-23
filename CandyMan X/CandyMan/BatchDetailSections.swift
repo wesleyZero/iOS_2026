@@ -113,24 +113,12 @@ struct BatchQuantitativeDataSection: View {
         let relativeError        = targetVol > 0 ? (quantifiedError / targetVol) * 100.0 : 0.0
 
         VStack(spacing: 0) {
-            HStack {
-                Button {
-                    CMHaptic.light()
-                    withAnimation(.cmSpring) { isExpanded.toggle() }
-                } label: {
-                    HStack {
-                        Text("Quantitative Data (Theoretical)").font(.headline).foregroundStyle(systemConfig.designTitle)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CMTheme.textSecondary)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                GlassCopyButton { BatchDetailCopyUtility.copyJSON(quantitativeDataJSON(), label: "Quantitative Data (Theoretical)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            CMCollapsibleHeader(
+                title: "Quantitative Data (Theoretical)",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON(quantitativeDataJSON(), label: "Quantitative Data (Theoretical)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
 
             if isExpanded {
                 ThemedDivider(indent: 16)
@@ -198,13 +186,7 @@ struct BatchQuantitativeDataSection: View {
     // MARK: - Helpers
 
     private func validationSubheader(_ title: String) -> some View {
-        HStack {
-            Text(title).cmSubsectionTitle()
-            Spacer()
-            Text("mass (g)").cmColumnHeader()
-            Text("vol (mL)").cmColumnHeader()
-        }
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
+        CMTwoColumnSubheader(title: title, col1: "mass (g)", col2: "vol (mL)", bottomPadding: 2)
     }
 
     @ViewBuilder
@@ -370,24 +352,12 @@ struct BatchRelativeDataSection: View {
         let finalMixVol  = activeTotalVol  + gelatinTotalVol  + sugarTotalVol
 
         VStack(spacing: 0) {
-            HStack {
-                Button {
-                    CMHaptic.light()
-                    withAnimation(.cmSpring) { isExpanded.toggle() }
-                } label: {
-                    HStack {
-                        Text("Composition Data (Theoretical)").font(.headline).foregroundStyle(systemConfig.designTitle)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CMTheme.textSecondary)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                GlassCopyButton { BatchDetailCopyUtility.copyJSON(relativeDataJSON(), label: "Composition Data (Theoretical)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            CMCollapsibleHeader(
+                title: "Composition Data (Theoretical)",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON(relativeDataJSON(), label: "Composition Data (Theoretical)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
 
             if isExpanded {
                 ThemedDivider(indent: 16)
@@ -447,23 +417,11 @@ struct BatchRelativeDataSection: View {
     }
 
     private func customMetricsSubheader(_ title: String) -> some View {
-        HStack {
-            Text(title).cmSubsectionTitle()
-            Spacer()
-            Text("mass").cmColumnHeader()
-            Text("vol").cmColumnHeader()
-        }
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
+        CMTwoColumnSubheader(title: title, col1: "mass", col2: "vol", bottomPadding: 2)
     }
 
     private func relativeSubheader(_ title: String) -> some View {
-        HStack {
-            Text(title).cmSubsectionTitle()
-            Spacer()
-            Text("mass %").cmColumnHeader()
-            Text("vol %").cmColumnHeader()
-        }
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
+        CMTwoColumnSubheader(title: title, col1: "mass %", col2: "vol %", bottomPadding: 2)
     }
 
     @ViewBuilder
@@ -564,6 +522,422 @@ struct BatchRelativeDataSection: View {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MARK: - Quantitative Data (Experimental) Section
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+struct BatchExperimentalDataSection: View {
+    var batch: SavedBatch
+    @Binding var copiedConfirmation: Bool
+    @Binding var copiedLabel: String
+    @Environment(SystemConfig.self) private var systemConfig
+    @State private var isExpanded = false
+
+    private var sortedComponents: [SavedBatchComponent] {
+        batch.components.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    // MARK: - Experimental Mix Masses (from measurements)
+
+    private var expGelatinMass: Double? { batch.calcMassGelatinAdded }
+    private var expSugarMass: Double? { batch.calcMassSugarAdded }
+    private var expActivationMass: Double? { batch.calcMassActiveAdded }
+
+    // MARK: - Experimental Mix Volumes (mass / measured density)
+
+    private var expGelatinVolume: Double? {
+        guard let mass = expGelatinMass, let density = batch.calcGelatinMixDensity, density > 0 else { return nil }
+        return mass / density
+    }
+
+    private var expSugarVolume: Double? {
+        guard let mass = expSugarMass, let density = batch.calcSugarMixDensity, density > 0 else { return nil }
+        return mass / density
+    }
+
+    private var expActivationVolume: Double? {
+        guard let mass = expActivationMass, let density = batch.calcActiveMixDensity, density > 0 else { return nil }
+        return mass / density
+    }
+
+    // MARK: - Experimental Totals
+
+    private var expFinalMixMass: Double? { batch.calcMassFinalMixtureInBeaker }
+
+    private var expFinalMixVolume: Double? {
+        // Sum of individual experimental volumes if all available
+        guard let gv = expGelatinVolume, let sv = expSugarVolume, let av = expActivationVolume else { return nil }
+        return gv + sv + av
+    }
+
+    private var overageFactor: Double {
+        batch.vBaseML > 0 ? batch.vMixML / batch.vBaseML : 1.0
+    }
+
+    private var expFinalMixMassNoOverage: Double? {
+        guard let m = expFinalMixMass, overageFactor > 0 else { return nil }
+        return m / overageFactor
+    }
+
+    private var expFinalMixVolNoOverage: Double? {
+        guard let v = expFinalMixVolume, overageFactor > 0 else { return nil }
+        return v / overageFactor
+    }
+
+    private var expVolPerMold: Double? {
+        guard let v = expFinalMixVolNoOverage, batch.wellCount > 0 else { return nil }
+        return v / Double(batch.wellCount)
+    }
+
+    private var expVolPerTray: Double? {
+        guard let v = expFinalMixVolNoOverage, batch.trayCount > 0 else { return nil }
+        return v / Double(batch.trayCount)
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(spacing: 0) {
+            CMCollapsibleHeader(
+                title: "Quantitative Data (Experimental)",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON(experimentalDataJSON(), label: "Quantitative Data (Experimental)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
+
+            if isExpanded {
+                ThemedDivider(indent: 16)
+
+                VStack(spacing: 0) {
+                    expSubheader("Target Volumes (Experimental)")
+                    expVolOnlyRow("Volume Per Mold", volume: expVolPerMold)
+                    expVolOnlyRow("Volume Per Tray", volume: expVolPerTray)
+                    expVolOnlyRow("Total Volume", volume: expFinalMixVolNoOverage, bold: true)
+
+                    ThemedDivider(indent: 16).padding(.top, 8)
+
+                    expSubheader("Input Mixtures")
+                    expCompRow("Gelatin Mix",    mass: expGelatinMass,    volume: expGelatinVolume)
+                    expCompRow("Sugar Mix",      mass: expSugarMass,      volume: expSugarVolume)
+                    expCompRow("Activation Mix", mass: expActivationMass, volume: expActivationVolume)
+
+                    ThemedDivider(indent: 16).padding(.top, 8)
+
+                    expSubheader("Final Mixture")
+                    expCompRow("Final Mix (+\(String(format: "%.1f", (overageFactor - 1) * 100))%)",
+                               mass: expFinalMixMass,
+                               volume: expFinalMixVolume)
+                    expCompRow("Final Mix (without overage)",
+                               mass: expFinalMixMassNoOverage,
+                               volume: expFinalMixVolNoOverage,
+                               bold: true)
+                        .background(CMTheme.totalRowBG)
+
+                    ThemedDivider(indent: 16).padding(.top, 8)
+
+                    expSubheader("Mixture Densities")
+                    expDensityRow("Gelatin Mix", density: batch.calcGelatinMixDensity)
+                    expDensityRow("Sugar Mix",   density: batch.calcSugarMixDensity)
+                    expDensityRow("Activation Mix", density: batch.calcActiveMixDensity)
+                    expDensityRow("Gummy Mixture",  density: batch.calcDensityFinalMix)
+
+                    Spacer().frame(height: 12)
+                }
+
+                if !hasAnyData {
+                    Text("Record weight measurements and mixture densities to populate experimental data.")
+                        .cmFootnote()
+                        .padding(.horizontal, 16).padding(.bottom, 12)
+                }
+            }
+        }
+    }
+
+    private var hasAnyData: Bool {
+        expGelatinMass != nil || expSugarMass != nil || expActivationMass != nil
+    }
+
+    // MARK: - Helpers
+
+    private func expSubheader(_ title: String) -> some View {
+        CMTwoColumnSubheader(title: title, col1: "mass (g)", col2: "vol (mL)", bottomPadding: 2)
+    }
+
+    private func expCompRow(_ label: String, mass: Double?, volume: Double?, bold: Bool = false) -> some View {
+        HStack {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer()
+            Text(mass.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: mass == nil ? CMTheme.textTertiary : (bold ? CMTheme.textPrimary : CMTheme.textSecondary))
+                .fontWeight(bold ? .bold : .regular)
+            Text(volume.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: volume == nil ? CMTheme.textTertiary : (bold ? CMTheme.textPrimary : CMTheme.textSecondary))
+                .fontWeight(bold ? .bold : .regular)
+        }
+        .cmDataRowPadding()
+    }
+
+    private func expVolOnlyRow(_ label: String, volume: Double?, bold: Bool = false) -> some View {
+        HStack {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer()
+            Text("—").cmValueSlot(color: CMTheme.textTertiary)
+            Text(volume.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: volume == nil ? CMTheme.textTertiary : (bold ? CMTheme.textPrimary : CMTheme.textSecondary))
+                .fontWeight(bold ? .bold : .regular)
+        }
+        .cmDataRowPadding()
+    }
+
+    private func expDensityRow(_ label: String, density: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(density.map { String(format: "%.4f", $0) } ?? "—")
+                .cmValueSlot(color: density == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+            Text("g/mL").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    // MARK: - JSON
+
+    private func experimentalDataJSON() -> [String: Any] {
+        func opt(_ v: Double?) -> Any { v as Any }
+        return [
+            "targetVolumes": [
+                "volumePerMold_mL": opt(expVolPerMold),
+                "volumePerTray_mL": opt(expVolPerTray),
+                "totalVolume_mL": opt(expFinalMixVolNoOverage),
+            ],
+            "inputMixtures": [
+                "gelatinMix": ["massGrams": opt(expGelatinMass), "volumeML": opt(expGelatinVolume)],
+                "sugarMix": ["massGrams": opt(expSugarMass), "volumeML": opt(expSugarVolume)],
+                "activationMix": ["massGrams": opt(expActivationMass), "volumeML": opt(expActivationVolume)],
+            ],
+            "finalMix": [
+                "withOverage": ["massGrams": opt(expFinalMixMass), "volumeML": opt(expFinalMixVolume)],
+                "withoutOverage": ["massGrams": opt(expFinalMixMassNoOverage), "volumeML": opt(expFinalMixVolNoOverage)],
+            ],
+            "densities": [
+                "gelatinMix": opt(batch.calcGelatinMixDensity),
+                "sugarMix": opt(batch.calcSugarMixDensity),
+                "activationMix": opt(batch.calcActiveMixDensity),
+                "gummyMixture": opt(batch.calcDensityFinalMix),
+            ],
+        ] as [String: Any]
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MARK: - Error (Experimental vs Theoretical) Section
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+struct BatchExperimentalErrorSection: View {
+    var batch: SavedBatch
+    @Binding var copiedConfirmation: Bool
+    @Binding var copiedLabel: String
+    @Environment(SystemConfig.self) private var systemConfig
+    @State private var isExpanded = false
+
+    private var sortedComponents: [SavedBatchComponent] {
+        batch.components.sorted { $0.sortOrder < $1.sortOrder }
+    }
+
+    // MARK: - Theoretical values (from saved components)
+
+    private var theoGelatinMass: Double {
+        sortedComponents.filter { $0.group == "Gelatin Mix" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoGelatinVol: Double {
+        sortedComponents.filter { $0.group == "Gelatin Mix" }.reduce(0.0) { $0 + $1.volumeML }
+    }
+    private var theoSugarMass: Double {
+        sortedComponents.filter { $0.group == "Sugar Mix" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoSugarVol: Double {
+        sortedComponents.filter { $0.group == "Sugar Mix" }.reduce(0.0) { $0 + $1.volumeML }
+    }
+    private var theoActivationMass: Double {
+        sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoActivationVol: Double {
+        sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.volumeML }
+    }
+    private var theoFinalMass: Double {
+        theoGelatinMass + theoSugarMass + theoActivationMass
+    }
+    private var theoFinalVol: Double {
+        theoGelatinVol + theoSugarVol + theoActivationVol
+    }
+
+    // MARK: - Experimental values
+
+    private var expGelatinMass: Double? { batch.calcMassGelatinAdded }
+    private var expSugarMass: Double? { batch.calcMassSugarAdded }
+    private var expActivationMass: Double? { batch.calcMassActiveAdded }
+    private var expFinalMass: Double? { batch.calcMassFinalMixtureInBeaker }
+
+    private var expGelatinVol: Double? {
+        guard let m = expGelatinMass, let d = batch.calcGelatinMixDensity, d > 0 else { return nil }
+        return m / d
+    }
+    private var expSugarVol: Double? {
+        guard let m = expSugarMass, let d = batch.calcSugarMixDensity, d > 0 else { return nil }
+        return m / d
+    }
+    private var expActivationVol: Double? {
+        guard let m = expActivationMass, let d = batch.calcActiveMixDensity, d > 0 else { return nil }
+        return m / d
+    }
+    private var expFinalVol: Double? {
+        guard let gv = expGelatinVol, let sv = expSugarVol, let av = expActivationVol else { return nil }
+        return gv + sv + av
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(spacing: 0) {
+            CMCollapsibleHeader(
+                title: "Error (Exp. vs Theoretical)",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON(errorJSON(), label: "Error (Exp. vs Theoretical)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
+
+            if isExpanded {
+                ThemedDivider(indent: 16)
+
+                VStack(spacing: 0) {
+                    // Mass Error
+                    errorMassSubheader("Mass Error")
+                    errorMassRow("Gelatin Mix",    theoretical: theoGelatinMass,    experimental: expGelatinMass)
+                    errorMassRow("Sugar Mix",      theoretical: theoSugarMass,      experimental: expSugarMass)
+                    errorMassRow("Activation Mix", theoretical: theoActivationMass, experimental: expActivationMass)
+                    errorMassRow("Final Mix",      theoretical: theoFinalMass,      experimental: expFinalMass, bold: true)
+                        .background(CMTheme.totalRowBG)
+
+                    ThemedDivider(indent: 16).padding(.top, 8)
+
+                    // Volume Error
+                    errorVolSubheader("Volume Error")
+                    errorVolRow("Gelatin Mix",    theoretical: theoGelatinVol,    experimental: expGelatinVol)
+                    errorVolRow("Sugar Mix",      theoretical: theoSugarVol,      experimental: expSugarVol)
+                    errorVolRow("Activation Mix", theoretical: theoActivationVol, experimental: expActivationVol)
+                    errorVolRow("Final Mix",      theoretical: theoFinalVol,      experimental: expFinalVol, bold: true)
+                        .background(CMTheme.totalRowBG)
+
+                    Spacer().frame(height: 12)
+                }
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func errorMassSubheader(_ title: String) -> some View {
+        CMTwoColumnSubheader(title: title, col1: "Δ (g)", col2: "Δ (%)", bottomPadding: 2)
+    }
+
+    private func errorVolSubheader(_ title: String) -> some View {
+        CMTwoColumnSubheader(title: title, col1: "Δ (mL)", col2: "Δ (%)", bottomPadding: 2)
+    }
+
+    private func errorMassRow(_ label: String, theoretical: Double, experimental: Double?, bold: Bool = false) -> some View {
+        errorRow(label, theoretical: theoretical, experimental: experimental, unitFmt: "%.3f", bold: bold)
+    }
+
+    private func errorVolRow(_ label: String, theoretical: Double, experimental: Double?, bold: Bool = false) -> some View {
+        errorRow(label, theoretical: theoretical, experimental: experimental, unitFmt: "%.3f", bold: bold)
+    }
+
+    private func errorRow(_ label: String, theoretical: Double, experimental: Double?, unitFmt: String, bold: Bool = false) -> some View {
+        let delta: Double? = experimental.map { $0 - theoretical }
+        let pctError: Double? = delta.map { theoretical > 0 ? ($0 / theoretical) * 100.0 : 0.0 }
+
+        return HStack(spacing: 6) {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.8)
+            Spacer()
+            // Absolute error
+            Group {
+                if let d = delta {
+                    Text(String(format: "%+.3f", d))
+                        .foregroundStyle(errorColor(pct: abs(pctError ?? 0)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: 70, alignment: .trailing)
+            // Relative error
+            Group {
+                if let p = pctError {
+                    Text(String(format: "%+.2f", p))
+                        .foregroundStyle(errorColor(pct: abs(p)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: 70, alignment: .trailing)
+        }
+        .cmDataRowPadding()
+    }
+
+    /// Color based on magnitude of percent error: green ≤2%, yellow 2-5%, red >5%
+    private func errorColor(pct: Double) -> Color {
+        if pct <= 2.0 {
+            return CMTheme.success
+        } else if pct <= 5.0 {
+            return systemConfig.designSecondaryAccent
+        } else {
+            return systemConfig.designAlert
+        }
+    }
+
+    // MARK: - JSON
+
+    private func errorJSON() -> [String: Any] {
+        func errEntry(label: String, theo: Double, exp: Double?) -> [String: Any] {
+            guard let e = exp else { return ["label": label, "theoretical": theo] as [String: Any] }
+            let delta = e - theo
+            let pct = theo > 0 ? (delta / theo) * 100.0 : 0.0
+            return ["label": label, "theoretical": theo, "experimental": e, "delta": delta, "relativeErrorPct": pct] as [String: Any]
+        }
+        return [
+            "massError": [
+                errEntry(label: "Gelatin Mix", theo: theoGelatinMass, exp: expGelatinMass),
+                errEntry(label: "Sugar Mix", theo: theoSugarMass, exp: expSugarMass),
+                errEntry(label: "Activation Mix", theo: theoActivationMass, exp: expActivationMass),
+                errEntry(label: "Final Mix", theo: theoFinalMass, exp: expFinalMass),
+            ],
+            "volumeError": [
+                errEntry(label: "Gelatin Mix", theo: theoGelatinVol, exp: expGelatinVol),
+                errEntry(label: "Sugar Mix", theo: theoSugarVol, exp: expSugarVol),
+                errEntry(label: "Activation Mix", theo: theoActivationVol, exp: expActivationVol),
+                errEntry(label: "Final Mix", theo: theoFinalVol, exp: expFinalVol),
+            ],
+        ] as [String: Any]
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // MARK: - Measurements Section
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -576,24 +950,12 @@ struct BatchMeasurementsSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button {
-                    CMHaptic.light()
-                    withAnimation(.cmSpring) { isExpanded.toggle() }
-                } label: {
-                    HStack {
-                        Text("Measurements").font(.headline).foregroundStyle(systemConfig.designTitle)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CMTheme.textSecondary)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                GlassCopyButton { BatchDetailCopyUtility.copyJSON(measurementsJSON(), label: "Measurements", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            CMCollapsibleHeader(
+                title: "Measurements",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON(measurementsJSON(), label: "Measurements", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
 
             if isExpanded {
             VStack(spacing: 0) {
@@ -612,16 +974,27 @@ struct BatchMeasurementsSection: View {
                 }
 
                 VStack(spacing: 0) {
-                    measureSubsection("Transfer to mold")
+                    measureSubsection("Transfer Gummy Mixture")
+                    if let syringeID = batch.hpTransferSyringeID {
+                        savedInfoRow("Syringe", value: syringeID)
+                    }
+                    if let scaleID = batch.hpTransferScaleID {
+                        savedInfoRow("Scale", value: scaleID)
+                    }
                     savedWeightRow("Syringe (Clean)",         value: batch.weightSyringeEmpty)
                     savedWeightRow("Syringe + Gummy Mix",     value: batch.weightSyringeWithMix)
                     savedVolumeRow("Syringe Gummy Mix Vol",   value: batch.volumeSyringeGummyMix)
                     savedWeightRow("Syringe + Residue",       value: batch.weightSyringeResidue)
-                    savedWeightRow("Beaker + Residue",        value: batch.weightBeakerResidue)
 
+                    measureSubsection("Molds")
+                    if let trayID = batch.hpMoldsTrayID {
+                        savedInfoRow("Tray", value: trayID)
+                    }
+                    if let scaleID = batch.hpMoldsScaleID {
+                        savedInfoRow("Scale", value: scaleID)
+                    }
                     savedWeightRow("Tray (Clean)",            value: batch.weightTrayClean)
                     savedWeightRow("Tray + Residue",          value: batch.weightTrayPlusResidue)
-
                     savedMoldsRow("Molds Filled",             value: batch.weightMoldsFilled)
                     savedWeightRow("Extra Gummy Mix",         value: batch.extraGummyMixGrams)
                 }
@@ -683,6 +1056,17 @@ struct BatchMeasurementsSection: View {
         .cmSavedRowPadding()
     }
 
+    private func savedInfoRow(_ label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(value)
+                .cmMono11()
+                .foregroundStyle(CMTheme.textSecondary)
+        }
+        .cmSavedRowPadding()
+    }
+
     private func savedMoldsRow(_ label: String, value: Double?) -> some View {
         HStack(spacing: 6) {
             Text(label).cmRowLabel()
@@ -703,7 +1087,8 @@ struct BatchMeasurementsSection: View {
             "gelatinMixture": ["beakerPlusGelatin": opt(batch.weightBeakerPlusGelatin)],
             "sugarMixture": ["substratePlusSugar": opt(batch.weightBeakerPlusSugar)],
             "activationMixture": ["substratePlusActivation": opt(batch.weightBeakerPlusActive)],
-            "transferToMold": ["syringeClean": opt(batch.weightSyringeEmpty), "syringePlusMix": opt(batch.weightSyringeWithMix), "syringeMixVolML": opt(batch.volumeSyringeGummyMix), "syringeResidue": opt(batch.weightSyringeResidue), "beakerResidue": opt(batch.weightBeakerResidue), "trayClean": opt(batch.weightTrayClean), "trayPlusResidue": opt(batch.weightTrayPlusResidue), "moldsFilled": opt(batch.weightMoldsFilled), "extraGummyMixGrams": opt(batch.extraGummyMixGrams)],
+            "transferGummyMixture": ["syringeID": batch.hpTransferSyringeID as Any, "scaleID": batch.hpTransferScaleID as Any, "syringeClean": opt(batch.weightSyringeEmpty), "syringePlusMix": opt(batch.weightSyringeWithMix), "syringeMixVolML": opt(batch.volumeSyringeGummyMix), "syringeResidue": opt(batch.weightSyringeResidue)],
+            "molds": ["trayID": batch.hpMoldsTrayID as Any, "scaleID": batch.hpMoldsScaleID as Any, "trayClean": opt(batch.weightTrayClean), "trayPlusResidue": opt(batch.weightTrayPlusResidue), "moldsFilled": opt(batch.weightMoldsFilled), "extraGummyMixGrams": opt(batch.extraGummyMixGrams)],
             "densities": [
                 "sugarMix": ["syringeClean": opt(batch.densitySyringeCleanSugar), "syringePlusMass": opt(batch.densitySyringePlusSugarMass), "syringePlusVol": opt(batch.densitySyringePlusSugarVol)],
                 "gelatinMix": ["syringeClean": opt(batch.densitySyringeCleanGelatin), "syringePlusMass": opt(batch.densitySyringePlusGelatinMass), "syringePlusVol": opt(batch.densitySyringePlusGelatinVol)],
@@ -745,24 +1130,12 @@ struct BatchCalculationsSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button {
-                    CMHaptic.light()
-                    withAnimation(.cmSpring) { isExpanded.toggle() }
-                } label: {
-                    HStack {
-                        Text("Experiment Data").font(.headline).foregroundStyle(systemConfig.designTitle)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CMTheme.textSecondary)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                GlassCopyButton { BatchDetailCopyUtility.copyJSON(calculationsJSON(), label: "Experiment Data", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            CMCollapsibleHeader(
+                title: "Experiment Data",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON(calculationsJSON(), label: "Experiment Data", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
 
             if isExpanded {
             VStack(spacing: 0) {
@@ -970,32 +1343,15 @@ struct BatchDryWeightSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button {
-                    CMHaptic.light()
-                    withAnimation(.cmSpring) { isExpanded.toggle() }
-                } label: {
-                    HStack {
-                        Text("Dehydration Tracking").font(.headline).foregroundStyle(systemConfig.designTitle)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CMTheme.textSecondary)
-                        Button {
-                            CMHaptic.light()
-                            withAnimation(.cmSpring) { batch.dehydrationLocked.toggle() }
-                        } label: {
-                            Image(systemName: batch.dehydrationLocked ? "lock.fill" : "lock.open.fill")
-                                .cmLockIcon(isLocked: batch.dehydrationLocked, color: systemConfig.designAlert)
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                GlassCopyButton { BatchDetailCopyUtility.copyJSON(dehydrationJSON(), label: "Dehydration Data", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            CMCollapsibleHeader(
+                title: "Dehydration Tracking",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                lockAction: { withAnimation(.cmSpring) { batch.dehydrationLocked.toggle() } },
+                isLocked: batch.dehydrationLocked,
+                lockColor: systemConfig.designAlert,
+                copyAction: { BatchDetailCopyUtility.copyJSON(dehydrationJSON(), label: "Dehydration Data", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
 
             if isExpanded {
             // Container picker + tare weight (side by side)
@@ -1403,85 +1759,21 @@ struct BatchNotesAndRatingsSection: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Button {
-                    CMHaptic.light()
-                    withAnimation(.cmSpring) { isExpanded.toggle() }
-                } label: {
-                    HStack {
-                        Text("Notes & Ratings").font(.headline).foregroundStyle(systemConfig.designTitle)
-                        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(CMTheme.textSecondary)
-                        Button {
-                            CMHaptic.light()
-                            withAnimation(.cmSpring) { batch.notesLocked.toggle() }
-                        } label: {
-                            Image(systemName: batch.notesLocked ? "lock.fill" : "lock.open.fill")
-                                .cmLockIcon(isLocked: batch.notesLocked, color: systemConfig.designAlert)
-                        }
-                        .buttonStyle(.plain)
-                        Spacer()
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                GlassCopyButton { BatchDetailCopyUtility.copyJSON(notesAndRatingsJSON(), label: "Notes & Ratings", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            }
-            .padding(.horizontal, 16).padding(.vertical, 12)
+            CMCollapsibleHeader(
+                title: "Notes & Ratings",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                lockAction: { withAnimation(.cmSpring) { batch.notesLocked.toggle() } },
+                isLocked: batch.notesLocked,
+                lockColor: systemConfig.designAlert,
+                copyAction: { BatchDetailCopyUtility.copyJSON(notesAndRatingsJSON(), label: "Notes & Ratings", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
 
             if isExpanded {
             VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    sectionHeader("Flavor Tags")
-                    tagRow(options: Self.flavorTagOptions, selection: $batch.flavorTags)
-                    sectionHeader("Flavor Notes")
-                    TextEditor(text: $batch.flavorNotes)
-                        .scrollContentBackground(.hidden)
-                        .foregroundStyle(CMTheme.textPrimary)
-                        .frame(minHeight: 80)
-                        .padding(8)
-                        .background(CMTheme.fieldBG)
-                        .cornerRadius(8)
-                        .padding(.horizontal, 16).padding(.bottom, 10)
-                    sectionHeader("Flavor Rating")
-                    ratingField(value: $batch.flavorRating)
-                    ThemedDivider(indent: 16)
-                }
-
-                VStack(spacing: 0) {
-                    sectionHeader("Appearance Tags")
-                    tagRow(options: Self.appearanceTagOptions, selection: $batch.colorTags)
-                    sectionHeader("Appearance Notes")
-                    TextEditor(text: $batch.colorNotes)
-                        .scrollContentBackground(.hidden)
-                        .foregroundStyle(CMTheme.textPrimary)
-                        .frame(minHeight: 80)
-                        .padding(8)
-                        .background(CMTheme.fieldBG)
-                        .cornerRadius(8)
-                        .padding(.horizontal, 16).padding(.bottom, 10)
-                    sectionHeader("Appearance Rating")
-                    ratingField(value: $batch.colorRating)
-                    ThemedDivider(indent: 16)
-                }
-
-                VStack(spacing: 0) {
-                    sectionHeader("Texture Tags")
-                    tagRow(options: Self.textureTagOptions, selection: $batch.textureTags)
-                    sectionHeader("Texture Notes")
-                    TextEditor(text: $batch.textureNotes)
-                        .scrollContentBackground(.hidden)
-                        .foregroundStyle(CMTheme.textPrimary)
-                        .frame(minHeight: 80)
-                        .padding(8)
-                        .background(CMTheme.fieldBG)
-                        .cornerRadius(8)
-                        .padding(.horizontal, 16).padding(.bottom, 10)
-                    sectionHeader("Texture Rating")
-                    ratingField(value: $batch.textureRating)
-                    ThemedDivider(indent: 16)
-                }
+                notesRatingBlock("Flavor", tagOptions: Self.flavorTagOptions, tags: $batch.flavorTags, notes: $batch.flavorNotes, rating: $batch.flavorRating)
+                notesRatingBlock("Appearance", tagOptions: Self.appearanceTagOptions, tags: $batch.colorTags, notes: $batch.colorNotes, rating: $batch.colorRating)
+                notesRatingBlock("Texture", tagOptions: Self.textureTagOptions, tags: $batch.textureTags, notes: $batch.textureNotes, rating: $batch.textureRating)
 
                 VStack(spacing: 0) {
                     sectionHeader("Process Notes")
@@ -1502,6 +1794,25 @@ struct BatchNotesAndRatingsSection: View {
     }
 
     // MARK: - Helpers
+
+    private func notesRatingBlock(_ category: String, tagOptions: [String], tags: Binding<String>, notes: Binding<String>, rating: Binding<Int>) -> some View {
+        VStack(spacing: 0) {
+            sectionHeader("\(category) Tags")
+            tagRow(options: tagOptions, selection: tags)
+            sectionHeader("\(category) Notes")
+            TextEditor(text: notes)
+                .scrollContentBackground(.hidden)
+                .foregroundStyle(CMTheme.textPrimary)
+                .frame(minHeight: 80)
+                .padding(8)
+                .background(CMTheme.fieldBG)
+                .cornerRadius(8)
+                .padding(.horizontal, 16).padding(.bottom, 10)
+            sectionHeader("\(category) Rating")
+            ratingField(value: rating)
+            ThemedDivider(indent: 16)
+        }
+    }
 
     private func sectionHeader(_ title: String) -> some View {
         HStack {

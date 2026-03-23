@@ -2418,10 +2418,17 @@ private struct KeypadStringFieldTextField: View {
 
 #if canImport(UIKit)
 /// Tracks keyboard visibility and frame via UIKit notifications.
+/// When a Bluetooth/hardware keyboard is connected, the software keyboard
+/// is not shown on screen — only a thin shortcut/prediction bar appears.
+/// `isSoftwareKeyboard` distinguishes the two so the dismiss button can
+/// be hidden when it isn't needed.
 @Observable
 final class KeyboardVisibility {
     var isVisible = false
     var keyboardHeight: CGFloat = 0
+    /// True only when a full software keyboard is on screen (not just
+    /// the hardware-keyboard shortcut bar, which is typically < 100pt).
+    var isSoftwareKeyboard = false
 
     init() {
         NotificationCenter.default.addObserver(
@@ -2433,12 +2440,25 @@ final class KeyboardVisibility {
                 self?.keyboardHeight = frame.height
             }
         }
+        // Use didShow so the frame has settled to its final size —
+        // avoids a brief flash when a hardware keyboard's shortcut bar
+        // initially reports a larger transient frame.
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardDidShowNotification,
+            object: nil, queue: .main
+        ) { [weak self] notification in
+            if let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect {
+                self?.keyboardHeight = frame.height
+                self?.isSoftwareKeyboard = frame.height > 100
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: UIResponder.keyboardWillHideNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
             self?.isVisible = false
             self?.keyboardHeight = 0
+            self?.isSoftwareKeyboard = false
         }
     }
 }
@@ -2453,7 +2473,7 @@ struct KeyboardDismissToolbar: ViewModifier {
         #if canImport(UIKit)
         content
             .overlay(alignment: .bottomTrailing) {
-                if keyboard.isVisible {
+                if keyboard.isVisible && keyboard.isSoftwareKeyboard {
                     Button {
                         UIApplication.shared.sendAction(
                             #selector(UIResponder.resignFirstResponder),
@@ -2875,6 +2895,188 @@ extension View {
     /// Uses an overlay so the full color sweep is always visible.
     func skittleSwirlWide(isPaused: Bool = false) -> some View {
         modifier(SkittleSwirlOverlayModifier(isPaused: isPaused))
+    }
+}
+
+// MARK: - Shared Reusable Views
+
+/// Collapsible section header used in BatchDetailSections: title + chevron + optional copy button.
+struct CMCollapsibleHeader: View {
+    let title: String
+    @Binding var isExpanded: Bool
+    let accentColor: Color
+    var lockAction: (() -> Void)? = nil
+    var isLocked: Bool = false
+    var lockColor: Color = CMTheme.lockRed
+    var copyAction: (() -> Void)? = nil
+
+    var body: some View {
+        HStack {
+            Button {
+                CMHaptic.light()
+                withAnimation(.cmSpring) { isExpanded.toggle() }
+            } label: {
+                HStack {
+                    Text(title).font(.headline).foregroundStyle(accentColor)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(CMTheme.textSecondary)
+                    if let lockAction {
+                        Button {
+                            CMHaptic.light()
+                            lockAction()
+                        } label: {
+                            Image(systemName: isLocked ? "lock.fill" : "lock.open.fill")
+                                .cmLockIcon(isLocked: isLocked, color: lockColor)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            if let copyAction {
+                GlassCopyButton(action: copyAction)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+}
+
+/// Dimmed-backdrop popup shell: dark overlay + dismiss-on-tap + close button + modal card.
+struct CMPopupShell<Content: View>: View {
+    let title: String
+    let titleColor: Color
+    let onDismiss: () -> Void
+    var lockAction: (() -> Void)? = nil
+    var isLocked: Bool = false
+    var lockColor: Color = CMTheme.lockRed
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55)
+                .ignoresSafeArea()
+                .onTapGesture { onDismiss() }
+
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text(title)
+                        .font(.headline)
+                        .foregroundStyle(titleColor)
+
+                    if let lockAction {
+                        Button {
+                            CMHaptic.light()
+                            lockAction()
+                        } label: {
+                            Image(systemName: isLocked ? "lock.fill" : "lock.open.fill")
+                                .cmLockIcon(isLocked: isLocked, color: lockColor)
+                                .frame(width: 32, height: 32)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        CMHaptic.light()
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundStyle(CMTheme.textTertiary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 8)
+                .zIndex(1)
+
+                ThemedDivider()
+
+                content
+            }
+            .cmModalCard()
+        }
+        .transition(.opacity)
+    }
+}
+
+/// Corrections / add-row button (plus.forwardslash.minus icon in a small rounded rectangle).
+struct CMCorrectionsButton: View {
+    let accentColor: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button {
+            CMHaptic.light()
+            action()
+        } label: {
+            Image(systemName: "plus.forwardslash.minus")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(accentColor)
+                .frame(width: 24, height: 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(accentColor.opacity(0.12))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Equipment selector capsule: icon + name + chevron disclosure in a tinted capsule.
+struct CMEquipmentCapsule: View {
+    let icon: String
+    let displayName: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11))
+                .foregroundStyle(color.opacity(0.6))
+            Text(displayName)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(color)
+                .lineLimit(1)
+            Spacer()
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(color.opacity(0.5))
+        }
+        .padding(.horizontal, 10).padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(color.opacity(0.06))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder(color.opacity(0.15), lineWidth: 0.5)
+                )
+        )
+    }
+}
+
+/// Two-column subheader row: title on the left, two column labels on the right.
+struct CMTwoColumnSubheader: View {
+    let title: String
+    let col1: String
+    let col2: String
+    var bottomPadding: CGFloat = 4
+
+    var body: some View {
+        HStack {
+            Text(title).cmSubsectionTitle()
+            Spacer()
+            Text(col1).cmFinePrint().frame(width: 70, alignment: .trailing)
+            Text(col2).cmFinePrint().frame(width: 70, alignment: .trailing)
+        }
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, bottomPadding)
     }
 }
 

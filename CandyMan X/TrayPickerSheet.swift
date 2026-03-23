@@ -1,32 +1,32 @@
 //
-//  ContainerPickerSheet.swift
+//  TrayPickerSheet.swift
 //  CandyMan
 //
-//  Bottom-sheet wheel picker for selecting a beaker container from
-//  SystemConfig.beakerContainers. Shows container name and current tare mass.
-//  Follows the same pattern as ResolutionWheelPickerSheet in SettingsView.
+//  Bottom-sheet wheel picker for selecting a tray from
+//  SystemConfig.trays. Shows tray name and current tare mass.
+//  Follows the same pattern as SyringePickerSheet.
 //
 
 import SwiftUI
 
-/// Data model for driving the container picker sheet.
-struct ContainerPickerRow: Identifiable {
+/// Data model for driving the tray picker sheet.
+struct TrayPickerRow: Identifiable {
     let id = UUID()
-    let label: String            // e.g. "Substrate Beaker"
-    let currentID: String?       // currently selected BeakerContainer.id
+    let label: String            // e.g. "Mold Tray"
+    let currentID: String?       // currently selected TrayContainer.id
     let onSelect: (String) -> Void
 }
 
-struct ContainerPickerSheet: View {
+struct TrayPickerSheet: View {
     @Environment(SystemConfig.self) private var systemConfig
     @Environment(\.dismiss) private var dismiss
-    let row: ContainerPickerRow
+    let row: TrayPickerRow
 
     @State private var selectedID: String
 
-    init(row: ContainerPickerRow) {
+    init(row: TrayPickerRow) {
         self.row = row
-        _selectedID = State(initialValue: row.currentID ?? SystemConfig.beakerContainers.first!.id)
+        _selectedID = State(initialValue: row.currentID ?? SystemConfig.factoryTrays.first!.id)
     }
 
     var body: some View {
@@ -44,17 +44,17 @@ struct ContainerPickerSheet: View {
                 .foregroundStyle(CMTheme.textPrimary)
                 .padding(.bottom, 4)
 
-            Text("Select Container")
+            Text("Select Tray")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(CMTheme.textSecondary)
                 .padding(.bottom, 20)
 
-            // Wheel picker showing "Beaker 25ml  (20.631 g)"
+            // Wheel picker showing "New Bear  (50.00 g)"
             Picker("", selection: $selectedID) {
-                ForEach(systemConfig.containers) { beaker in
-                    Text("\(beaker.name)  (\(beaker.formattedTareWeight))")
+                ForEach(systemConfig.trays) { tray in
+                    Text("\(tray.name)  (\(tray.formattedTareWeight))")
                         .font(.system(size: 18, weight: .medium, design: .monospaced))
-                        .tag(beaker.id)
+                        .tag(tray.id)
                 }
             }
             .pickerStyle(.wheel)

@@ -23,8 +23,9 @@ struct BatchOutputView: View {
     @Environment(SystemConfig.self) private var systemConfig
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showFullScreen = false
-    @State private var showWaterUpdatedAlert = false
-    @State private var lastAdditionalWater: Double? = nil
+    @State private var showAdditionalWaterPopup = false
+    private var batchActivated: Bool { viewModel.batchActivated }
+    @State private var showEspadaToast = false
 
     var body: some View {
         let result = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
@@ -60,7 +61,10 @@ struct BatchOutputView: View {
             spacerLine
             activesSection
             spacerLine
-            additionalWaterInput
+            if !batchActivated {
+                additionalWaterSection
+                activateBatchButton
+            }
             Spacer().frame(height: 8)
         }
         .fullScreenCover(isPresented: $showFullScreen) {
@@ -68,36 +72,43 @@ struct BatchOutputView: View {
                 .environment(systemConfig)
                 .environment(viewModel)
         }
-        .onChange(of: viewModel.additionalActiveWaterML) { oldValue, newValue in
-            // Skip the initial binding (first appearance) and only fire on real user edits
-            guard lastAdditionalWater != nil else {
-                lastAdditionalWater = newValue
-                return
-            }
-            guard oldValue != newValue else { return }
-            lastAdditionalWater = newValue
-            CMHaptic.medium()
-            withAnimation(.cmSpring) { showWaterUpdatedAlert = true }
-        }
-        .onAppear { lastAdditionalWater = viewModel.additionalActiveWaterML }
         .overlay {
-            if showWaterUpdatedAlert {
-                PsychedelicAlert5(
-                    title: "Batch Updated",
-                    subtitle: "All batch output values have been recalculated.",
-                    value: String(format: "%.1f mL", viewModel.additionalActiveWaterML)
-                ) {
-                    withAnimation(.cmSpring) { showWaterUpdatedAlert = false }
+            if showAdditionalWaterPopup {
+                AdditionalWaterPopup {
+                    withAnimation(.cmSpring) { showAdditionalWaterPopup = false }
                 }
+                .environment(viewModel)
+                .environment(systemConfig)
+                .transition(.opacity)
             }
         }
+        .overlay {
+            if showEspadaToast {
+                GeometryReader { geo in
+                    PsychedelicAlert1(text: "ESPADAAAA")
+                        .frame(maxWidth: .infinity)
+                        .position(x: geo.size.width / 2, y: geo.size.height * 0.3)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                .allowsHitTesting(false)
+            }
+        }
+        .animation(.cmSpring, value: showAdditionalWaterPopup)
+        .animation(.cmSpring, value: batchActivated)
+        .animation(.cmSpring, value: showEspadaToast)
     }
 
     private func mixSection(_ mix: MixGroup) -> some View {
         VStack(spacing: 0) {
             HStack { Text(mix.name).cmSubsectionTitle(); Spacer() }
                 .cmSubsectionPadding()
-            ForEach(mix.components) { comp in componentRow(comp) }
+            ForEach(mix.components) { comp in
+                if batchActivated {
+                    componentRow(comp)
+                } else {
+                    redactedComponentRow(comp)
+                }
+            }
         }
     }
 
@@ -123,11 +134,20 @@ struct BatchOutputView: View {
                 HStack(spacing: 6) {
                     Text(comp.label).cmRowLabel()
                     Spacer()
-                    if overagePercent > 0 {
-                        Text(String(format: "%.3f", comp.massGrams * factor))
-                            .cmValueSlot(width: 60, color: fuchsiaFlare)
+                    if batchActivated {
+                        if overagePercent > 0 {
+                            Text(String(format: "%.3f", comp.massGrams * factor))
+                                .cmValueSlot(width: 60, color: fuchsiaFlare)
+                        }
+                        Text(String(format: "%.3f", comp.massGrams)).cmValueSlot()
+                    } else {
+                        if overagePercent > 0 {
+                            Text("██████")
+                                .cmValueSlot(width: 60, color: CMTheme.textTertiary.opacity(0.4))
+                        }
+                        Text("██████")
+                            .cmValueSlot(color: CMTheme.textTertiary.opacity(0.4))
                     }
-                    Text(String(format: "%.3f", comp.massGrams)).cmValueSlot()
                     Text(comp.displayUnit).cmUnitSlot()
                 }
                 .cmDataRowPadding()
@@ -260,6 +280,20 @@ struct BatchOutputView: View {
         }
     }
 
+    private func redactedComponentRow(_ comp: BatchComponent) -> some View {
+        let colorMatch = GummyColor.allCases.first { "\($0.rawValue) Color" == comp.label }
+        return HStack(spacing: 6) {
+            if let color = colorMatch {
+                Circle().fill(color.swiftUIColor).frame(width: 10, height: 10)
+            }
+            Text(comp.label).cmRowLabel()
+            Spacer()
+            Text("██████")
+                .cmValueSlot(color: CMTheme.textTertiary.opacity(0.4))
+            Text(comp.displayUnit).cmUnitSlot()
+        }.cmDataRowPadding()
+    }
+
     private var activesSection: some View {
         @Bindable var viewModel = viewModel
         let totalWells = viewModel.totalGummies(using: systemConfig)
@@ -371,24 +405,154 @@ struct BatchOutputView: View {
         }
     }
 
-    private var additionalWaterInput: some View {
-        @Bindable var viewModel = viewModel
-        return HStack(spacing: 6) {
-            Text("Additional Water for Dissolving Active")
-                .cmRowLabel().lineLimit(2)
-            Spacer()
-            NumericField(value: $viewModel.additionalActiveWaterML, decimals: 1)
-                .multilineTextAlignment(.trailing)
-                .cmMono12()
-                .foregroundStyle(systemConfig.designAlert)
-                .frame(width: 50)
-            Text("mL").cmUnitSlot()
+    @ViewBuilder
+    private var additionalWaterSection: some View {
+        if batchActivated {
+            // Static text row (post-activation)
+            HStack(spacing: 6) {
+                Text("Additional Water for Dissolving Active")
+                    .cmRowLabel().lineLimit(2)
+                Spacer()
+                Text(String(format: "%.1f", viewModel.additionalActiveWaterML))
+                    .cmValueSlot(color: systemConfig.designAlert)
+                Text("mL").cmUnitSlot()
+            }
+            .padding(.horizontal, 20).padding(.vertical, 4)
+        } else {
+            // Psychedelic button (pre-activation)
+            Button {
+                CMHaptic.medium()
+                withAnimation(.cmSpring) { showAdditionalWaterPopup = true }
+            } label: {
+                HStack(spacing: 6) {
+                    Label("Additional Water for Dissolving Active", systemImage: "drop.fill")
+                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                    Spacer()
+                    if viewModel.additionalActiveWaterML > 0 {
+                        Text(String(format: "%.1f mL", viewModel.additionalActiveWaterML))
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(systemConfig.designAlert)
+                    }
+                }
+                .padding(.vertical, 10)
+                .padding(.horizontal, 14)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
+                            .fill(CMTheme.chipBG)
+                        PsychedelicButton2()
+                    }
+                )
+            }
+            .buttonStyle(CMPressStyle())
+            .padding(.horizontal, 16).padding(.vertical, 4)
         }
-        .padding(.horizontal, 20).padding(.vertical, 4)
+    }
+
+    private var activateBatchButton: some View {
+        Button {
+            CMHaptic.heavy()
+            withAnimation(.cmSpring) {
+                viewModel.batchActivated = true
+                showEspadaToast = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                withAnimation(.easeOut(duration: 0.4)) { showEspadaToast = false }
+            }
+        } label: {
+            Label("Activate Batch", systemImage: "bolt.fill")
+                .font(.headline)
+                .foregroundStyle(.white)
+                .shadow(color: .white.opacity(0.3), radius: 2)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
+                            .fill(CMTheme.chipBG)
+                        PsychedelicButton2()
+                    }
+                )
+        }
+        .buttonStyle(CMPressStyle())
+        .padding(.horizontal, 16).padding(.vertical, 4)
     }
 
     private var spacerLine: some View {
         ThemedDivider(indent: 20).padding(.vertical, 8)
+    }
+}
+
+// MARK: - Additional Water Popup
+
+struct AdditionalWaterPopup: View {
+    @Environment(BatchConfigViewModel.self) private var viewModel
+    @Environment(SystemConfig.self) private var systemConfig
+    let onDismiss: () -> Void
+
+    @State private var editingValue: Double = 0.0
+
+    private var strawberryRed: Color { systemConfig.designAlert }
+
+    var body: some View {
+        @Bindable var viewModel = viewModel
+
+        CMPopupShell(
+            title: "Additional Water",
+            titleColor: strawberryRed,
+            onDismiss: onDismiss
+        ) {
+                VStack(spacing: 12) {
+                    Text("How much additional water for dissolving active?")
+                        .cmMono11()
+                        .foregroundStyle(CMTheme.textSecondary)
+                        .multilineTextAlignment(.center)
+
+                    HStack(spacing: 8) {
+                        NumericField(value: $editingValue, decimals: 1)
+                            .multilineTextAlignment(.center)
+                            .cmMono12()
+                            .foregroundStyle(strawberryRed)
+                            .frame(width: 80)
+                            .cmFieldStyle()
+
+                        Text("mL")
+                            .cmMono12()
+                            .foregroundStyle(CMTheme.textTertiary)
+                    }
+                }
+                .padding(.horizontal, 16).padding(.vertical, 16)
+
+                ThemedDivider()
+
+                // OK button
+                Button {
+                    CMHaptic.medium()
+                    viewModel.additionalActiveWaterML = editingValue
+                    onDismiss()
+                } label: {
+                    Text("OK")
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(
+                            ZStack {
+                                RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
+                                    .fill(CMTheme.chipBG)
+                                PsychedelicButton2()
+                            }
+                        )
+                }
+                .buttonStyle(CMPressStyle())
+                .padding(.horizontal, 16).padding(.vertical, 12)
+        }
+        .onAppear {
+            editingValue = viewModel.additionalActiveWaterML
+        }
     }
 }
 
