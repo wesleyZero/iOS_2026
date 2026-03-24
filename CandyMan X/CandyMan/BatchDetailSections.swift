@@ -14,8 +14,9 @@
 //    BatchFlavorsSection           — flavor composition pie chart + list
 //    BatchColorsSection            — color composition list
 //    DehydrationSection            — drying curve line chart (mass vs time)
-//    BatchMeasurementsSection      — recorded weights (gelatin/sugar/active/final)
-//    BatchCalculationsSection      — density, overage, error analysis summary
+//    BatchHPMeasurementsSection    — high-precision weight measurements
+//    BatchExperimentalData2Section — experimental data (masses, volumes, densities, losses, gummies)
+//    BatchSigFigSection            — significant figures analysis for experimental computations
 //    BatchNotesSection             — free-text notes editor
 //
 
@@ -522,186 +523,260 @@ struct BatchRelativeDataSection: View {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARK: - Quantitative Data (Experimental) Section
+// MARK: - HP Measurements Section
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-struct BatchExperimentalDataSection: View {
+struct BatchHPMeasurementsSection: View {
     var batch: SavedBatch
     @Binding var copiedConfirmation: Bool
     @Binding var copiedLabel: String
     @Environment(SystemConfig.self) private var systemConfig
     @State private var isExpanded = false
 
-    private var sortedComponents: [SavedBatchComponent] {
-        batch.components.sorted { $0.sortOrder < $1.sortOrder }
-    }
-
-    // MARK: - Experimental Mix Masses (from measurements)
-
-    private var expGelatinMass: Double? { batch.calcMassGelatinAdded }
-    private var expSugarMass: Double? { batch.calcMassSugarAdded }
-    private var expActivationMass: Double? { batch.calcMassActiveAdded }
-
-    // MARK: - Experimental Mix Volumes (mass / measured density)
-
-    private var expGelatinVolume: Double? {
-        guard let mass = expGelatinMass, let density = batch.calcGelatinMixDensity, density > 0 else { return nil }
-        return mass / density
-    }
-
-    private var expSugarVolume: Double? {
-        guard let mass = expSugarMass, let density = batch.calcSugarMixDensity, density > 0 else { return nil }
-        return mass / density
-    }
-
-    private var expActivationVolume: Double? {
-        guard let mass = expActivationMass, let density = batch.calcActiveMixDensity, density > 0 else { return nil }
-        return mass / density
-    }
-
-    // MARK: - Experimental Totals
-
-    private var expFinalMixMass: Double? { batch.calcMassFinalMixtureInBeaker }
-
-    private var expFinalMixVolume: Double? {
-        // Sum of individual experimental volumes if all available
-        guard let gv = expGelatinVolume, let sv = expSugarVolume, let av = expActivationVolume else { return nil }
-        return gv + sv + av
-    }
-
-    private var overageFactor: Double {
-        batch.vBaseML > 0 ? batch.vMixML / batch.vBaseML : 1.0
-    }
-
-    private var expFinalMixMassNoOverage: Double? {
-        guard let m = expFinalMixMass, overageFactor > 0 else { return nil }
-        return m / overageFactor
-    }
-
-    private var expFinalMixVolNoOverage: Double? {
-        guard let v = expFinalMixVolume, overageFactor > 0 else { return nil }
-        return v / overageFactor
-    }
-
-    private var expVolPerMold: Double? {
-        guard let v = expFinalMixVolNoOverage, batch.wellCount > 0 else { return nil }
-        return v / Double(batch.wellCount)
-    }
-
-    private var expVolPerTray: Double? {
-        guard let v = expFinalMixVolNoOverage, batch.trayCount > 0 else { return nil }
-        return v / Double(batch.trayCount)
-    }
-
-    // MARK: - Body
-
     var body: some View {
         VStack(spacing: 0) {
             CMCollapsibleHeader(
-                title: "Quantitative Data (Experimental)",
+                title: "Batch Measurements",
                 isExpanded: $isExpanded,
                 accentColor: systemConfig.designTitle,
-                copyAction: { BatchDetailCopyUtility.copyJSON(experimentalDataJSON(), label: "Quantitative Data (Experimental)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+                copyAction: { BatchDetailCopyUtility.copyJSON(hpMeasurementsJSON(), label: "Batch Measurements", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
             )
 
             if isExpanded {
-                ThemedDivider(indent: 16)
+            VStack(spacing: 0) {
 
-                VStack(spacing: 0) {
-                    expSubheader("Target Volumes (Experimental)")
-                    expVolOnlyRow("Volume Per Mold", volume: expVolPerMold)
-                    expVolOnlyRow("Volume Per Tray", volume: expVolPerTray)
-                    expVolOnlyRow("Total Volume", volume: expFinalMixVolNoOverage, bold: true)
-
-                    ThemedDivider(indent: 16).padding(.top, 8)
-
-                    expSubheader("Input Mixtures")
-                    expCompRow("Gelatin Mix",    mass: expGelatinMass,    volume: expGelatinVolume)
-                    expCompRow("Sugar Mix",      mass: expSugarMass,      volume: expSugarVolume)
-                    expCompRow("Activation Mix", mass: expActivationMass, volume: expActivationVolume)
-
-                    ThemedDivider(indent: 16).padding(.top, 8)
-
-                    expSubheader("Final Mixture")
-                    expCompRow("Final Mix (+\(String(format: "%.1f", (overageFactor - 1) * 100))%)",
-                               mass: expFinalMixMass,
-                               volume: expFinalMixVolume)
-                    expCompRow("Final Mix (without overage)",
-                               mass: expFinalMixMassNoOverage,
-                               volume: expFinalMixVolNoOverage,
-                               bold: true)
-                        .background(CMTheme.totalRowBG)
-
-                    ThemedDivider(indent: 16).padding(.top, 8)
-
-                    expSubheader("Mixture Densities")
-                    expDensityRow("Gelatin Mix", density: batch.calcGelatinMixDensity)
-                    expDensityRow("Sugar Mix",   density: batch.calcSugarMixDensity)
-                    expDensityRow("Activation Mix", density: batch.calcActiveMixDensity)
-                    expDensityRow("Gummy Mixture",  density: batch.calcDensityFinalMix)
-
-                    Spacer().frame(height: 12)
+                // MARK: Gelatin Mixture
+                hpSubsection("Gelatin Mixture")
+                if let id = batch.hpSubstrateBeakerID { hpInfoRow("Substrate Beaker", value: id) }
+                if let id = batch.hpSubstrateStirBarID { hpInfoRow("Stir Bar", value: id) }
+                if let id = batch.hpSubstrateScaleID { hpInfoRow("Scale", value: id) }
+                hpTareRow("Beaker Tare", value: batch.frozenSubstrateBeakerTare)
+                hpCumulativeRow("+ Gelatin", cumulative: batch.hpGelatin, individual: batch.hpIndividualGelatin)
+                hpCumulativeRow("+ Water", cumulative: batch.hpGelatinWater, individual: batch.hpIndividualGelatinWater)
+                if let corrTotal = batch.correctionTotal(for: "gelatin") {
+                    hpTotalRow("Corrections", value: corrTotal)
                 }
-
-                if !hasAnyData {
-                    Text("Record weight measurements and mixture densities to populate experimental data.")
-                        .cmFootnote()
-                        .padding(.horizontal, 16).padding(.bottom, 12)
+                // Show individual correction entries
+                ForEach(batch.savedCorrections.filter { $0.section == "gelatin" }) { c in
+                    hpCorrectionRow(c)
                 }
+                hpTotalRow("Net Total | Gelatin Mixture", value: batch.hpGelatinMixtureTotal.map {
+                    $0 + (batch.correctionTotal(for: "gelatin") ?? 0)
+                })
+
+                ThemedDivider(indent: 16).padding(.top, 8)
+
+                // MARK: Sugar Mixture
+                hpSubsection("Sugar Mixture")
+                if let id = batch.hpSugarMixBeakerID { hpInfoRow("Sugar Mix Beaker", value: id) }
+                if let id = batch.hpSugarMixStirBarID { hpInfoRow("Stir Bar", value: id) }
+                if let id = batch.hpSugarMixScaleID { hpInfoRow("Scale", value: id) }
+                hpTareRow("Beaker Tare", value: batch.frozenSugarMixBeakerTare)
+                hpCumulativeRow("+ Granulated Sugar", cumulative: batch.hpGranulated, individual: batch.hpIndividualGranulated)
+                hpCumulativeRow("+ Glucose Syrup", cumulative: batch.hpGlucoseSyrup, individual: batch.hpIndividualGlucoseSyrup)
+                hpCumulativeRow("+ Water", cumulative: batch.hpSugarWater, individual: batch.hpIndividualSugarWater)
+                if let corrTotal = batch.correctionTotal(for: "sugar") {
+                    hpTotalRow("Corrections", value: corrTotal)
+                }
+                ForEach(batch.savedCorrections.filter { $0.section == "sugar" }) { c in
+                    hpCorrectionRow(c)
+                }
+                hpTotalRow("Net Total | Sugar Mixture", value: batch.hpSugarMixtureTotal.map {
+                    $0 + (batch.correctionTotal(for: "sugar") ?? 0)
+                })
+
+                ThemedDivider(indent: 16).padding(.top, 8)
+
+                // MARK: Activation Mixture
+                hpSubsection("Activation Mixture")
+                if let id = batch.hpActivationTrayID { hpInfoRow("Activation Tray", value: id) }
+                if let id = batch.hpActivationScaleID { hpInfoRow("Scale", value: id) }
+                hpTareRow("Tray Tare", value: batch.frozenActivationTrayTare)
+                hpCumulativeRow("+ Citric Acid", cumulative: batch.hpCitricAcid, individual: batch.hpIndividualCitricAcid)
+                hpCumulativeRow("+ Activation Water", cumulative: batch.hpActivationWater, individual: batch.hpIndividualActivationWater)
+                hpCumulativeRow("+ K Sorbate", cumulative: batch.hpKSorbate, individual: batch.hpIndividualKSorbate)
+                hpCumulativeRow("+ Oils/Terps/Active", cumulative: batch.hpFlavorOilsTerpsActive, individual: batch.hpIndividualFlavorOilsTerpsActive)
+                hpCumulativeRow("Activation Tray Residue", cumulative: batch.hpActivationTrayResidue, individual: nil)
+                if let corrTotal = batch.correctionTotal(for: "activation") {
+                    hpTotalRow("Corrections", value: corrTotal)
+                }
+                ForEach(batch.savedCorrections.filter { $0.section == "activation" }) { c in
+                    hpCorrectionRow(c)
+                }
+                hpTotalRow("Net Total | Activation Mixture", value: batch.hpActivationMixtureTotal.map {
+                    $0 + (batch.correctionTotal(for: "activation") ?? 0)
+                })
+
+                ThemedDivider(indent: 16).padding(.top, 8)
+
+                // MARK: Transfer
+                hpSubsection("Transfer & Final Mixture")
+                if let id = batch.hpTransferSyringeID { hpInfoRow("Transfer Syringe", value: id) }
+                if let id = batch.hpTransferScaleID { hpInfoRow("Transfer Scale", value: id) }
+                hpWeightRow("Substrate + Sugar Transfer", value: batch.hpSubstrateSugarTransfer)
+                hpWeightRow("Substrate + Activation Transfer", value: batch.hpSubstrateActivationTransfer)
+
+                // Transfer measurements
+                hpWeightRow("Syringe (Clean)", value: batch.weightSyringeEmpty)
+                hpWeightRow("Syringe + Gummy Mix", value: batch.weightSyringeWithMix)
+                hpVolumeRow("Syringe Gummy Mix Vol", value: batch.volumeSyringeGummyMix)
+                hpWeightRow("Syringe + Residue", value: batch.weightSyringeResidue)
+
+                ThemedDivider(indent: 16).padding(.top, 8)
+
+                // MARK: Molds
+                hpSubsection("Molds")
+                if let id = batch.hpMoldsTrayID { hpInfoRow("Tray", value: id) }
+                if let id = batch.hpMoldsScaleID { hpInfoRow("Scale", value: id) }
+                hpWeightRow("Tray (Clean)", value: batch.weightTrayClean)
+                hpWeightRow("Tray + Residue", value: batch.weightTrayPlusResidue)
+                hpMoldsRow("Molds Filled", value: batch.weightMoldsFilled)
+                hpWeightRow("Extra Gummy Mix", value: batch.extraGummyMixGrams)
+
+                ThemedDivider(indent: 16).padding(.top, 8)
+
+                // MARK: Mixture Densities
+                hpSubsection("Mixture Densities — Gelatin Mix")
+                hpWeightRow("Syringe (Clean)", value: batch.densitySyringeCleanGelatin)
+                hpWeightRow("Syringe + Gelatin Mix", value: batch.densitySyringePlusGelatinMass)
+                hpVolumeRow("Syringe + Gelatin Mix Vol", value: batch.densitySyringePlusGelatinVol)
+                hpDensityRow("Gelatin Mix Density", value: batch.calcGelatinMixDensity)
+
+                hpSubsection("Mixture Densities — Sugar Mix")
+                hpWeightRow("Syringe (Clean)", value: batch.densitySyringeCleanSugar)
+                hpWeightRow("Syringe + Sugar Mix", value: batch.densitySyringePlusSugarMass)
+                hpVolumeRow("Syringe + Sugar Mix Vol", value: batch.densitySyringePlusSugarVol)
+                hpDensityRow("Sugar Mix Density", value: batch.calcSugarMixDensity)
+
+                hpSubsection("Mixture Densities — Activation Mix")
+                hpWeightRow("Syringe (Clean)", value: batch.densitySyringeCleanActive)
+                hpWeightRow("Syringe + Activation Mix", value: batch.densitySyringePlusActiveMass)
+                hpVolumeRow("Syringe + Activation Mix Vol", value: batch.densitySyringePlusActiveVol)
+                hpDensityRow("Activation Mix Density", value: batch.calcActiveMixDensity)
+
+                hpDensityRow("Gummy Mixture Density", value: batch.calcDensityFinalMix)
             }
+
+            Spacer().frame(height: 8)
+            } // end if isExpanded
         }
     }
 
-    private var hasAnyData: Bool {
-        expGelatinMass != nil || expSugarMass != nil || expActivationMass != nil
-    }
+    // MARK: - Row helpers
 
-    // MARK: - Helpers
-
-    private func expSubheader(_ title: String) -> some View {
-        CMTwoColumnSubheader(title: title, col1: "mass (g)", col2: "vol (mL)", bottomPadding: 2)
-    }
-
-    private func expCompRow(_ label: String, mass: Double?, volume: Double?, bold: Bool = false) -> some View {
+    private func hpSubsection(_ title: String) -> some View {
         HStack {
-            Text(label)
-                .cmMono12()
-                .fontWeight(bold ? .bold : .regular)
-                .foregroundStyle(CMTheme.textPrimary)
-                .lineLimit(1).minimumScaleFactor(0.8)
+            Text(title).cmSubsectionTitle()
             Spacer()
-            Text(mass.map { String(format: "%.3f", $0) } ?? "—")
-                .cmValueSlot(color: mass == nil ? CMTheme.textTertiary : (bold ? CMTheme.textPrimary : CMTheme.textSecondary))
-                .fontWeight(bold ? .bold : .regular)
-            Text(volume.map { String(format: "%.3f", $0) } ?? "—")
-                .cmValueSlot(color: volume == nil ? CMTheme.textTertiary : (bold ? CMTheme.textPrimary : CMTheme.textSecondary))
-                .fontWeight(bold ? .bold : .regular)
         }
-        .cmDataRowPadding()
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
     }
 
-    private func expVolOnlyRow(_ label: String, volume: Double?, bold: Bool = false) -> some View {
-        HStack {
-            Text(label)
-                .cmMono12()
-                .fontWeight(bold ? .bold : .regular)
-                .foregroundStyle(CMTheme.textPrimary)
-                .lineLimit(1).minimumScaleFactor(0.8)
-            Spacer()
-            Text("—").cmValueSlot(color: CMTheme.textTertiary)
-            Text(volume.map { String(format: "%.3f", $0) } ?? "—")
-                .cmValueSlot(color: volume == nil ? CMTheme.textTertiary : (bold ? CMTheme.textPrimary : CMTheme.textSecondary))
-                .fontWeight(bold ? .bold : .regular)
-        }
-        .cmDataRowPadding()
-    }
-
-    private func expDensityRow(_ label: String, density: Double?) -> some View {
+    private func hpInfoRow(_ label: String, value: String) -> some View {
         HStack(spacing: 6) {
             Text(label).cmRowLabel()
             Spacer()
-            Text(density.map { String(format: "%.4f", $0) } ?? "—")
-                .cmValueSlot(color: density == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+            Text(value)
+                .cmMono11()
+                .foregroundStyle(CMTheme.textSecondary)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpTareRow(_ label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(value.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
+            Text("g").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpCumulativeRow(_ label: String, cumulative: Double?, individual: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            // Cumulative reading
+            Text(cumulative.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: cumulative == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
+            // Individual mass (derived)
+            Text(individual.map { String(format: "(%.3f)", $0) } ?? "")
+                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: 60, alignment: .trailing)
+            Text("g").cmUnitSlot(width: 20)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpTotalRow(_ label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel().fontWeight(.semibold)
+            Spacer()
+            Text(value.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+                .fontWeight(.semibold)
+            Text("g").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpCorrectionRow(_ c: SavedCorrectionEntry) -> some View {
+        HStack(spacing: 6) {
+            Text("  \(c.label)").cmRowLabel()
+            Spacer()
+            if let diff = c.difference {
+                Text(String(format: "%+.3f", diff))
+                    .cmValueSlot(color: CMTheme.textSecondary)
+            } else {
+                Text("—").cmValueSlot(color: CMTheme.textTertiary)
+            }
+            Text("g").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpWeightRow(_ label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(value.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
+            Text("g").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpVolumeRow(_ label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(value.map { String(format: "%.3f", $0) } ?? "—")
+                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
+            Text("mL").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpMoldsRow(_ label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(value.map { String(format: "%.1f", $0) } ?? "—")
+                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
+            Text("#").cmUnitSlot(width: 38)
+        }
+        .cmSavedRowPadding()
+    }
+
+    private func hpDensityRow(_ label: String, value: Double?) -> some View {
+        HStack(spacing: 6) {
+            Text(label).cmRowLabel()
+            Spacer()
+            Text(value.map { String(format: "%.4f", $0) } ?? "—")
+                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
             Text("g/mL").cmUnitSlot(width: 38)
         }
         .cmSavedRowPadding()
@@ -709,22 +784,66 @@ struct BatchExperimentalDataSection: View {
 
     // MARK: - JSON
 
-    private func experimentalDataJSON() -> [String: Any] {
+    private func hpMeasurementsJSON() -> [String: Any] {
         func opt(_ v: Double?) -> Any { v as Any }
+        func optStr(_ v: String?) -> Any { v as Any }
         return [
-            "targetVolumes": [
-                "volumePerMold_mL": opt(expVolPerMold),
-                "volumePerTray_mL": opt(expVolPerTray),
-                "totalVolume_mL": opt(expFinalMixVolNoOverage),
+            "gelatinMixture": [
+                "beakerID": optStr(batch.hpSubstrateBeakerID),
+                "scaleID": optStr(batch.hpSubstrateScaleID),
+                "stirBarID": optStr(batch.hpSubstrateStirBarID),
+                "beakerTare": opt(batch.frozenSubstrateBeakerTare),
+                "hpGelatin": opt(batch.hpGelatin),
+                "hpGelatinWater": opt(batch.hpGelatinWater),
+                "individualGelatin": opt(batch.hpIndividualGelatin),
+                "individualGelatinWater": opt(batch.hpIndividualGelatinWater),
+                "mixTotal": opt(batch.hpGelatinMixtureTotal),
             ],
-            "inputMixtures": [
-                "gelatinMix": ["massGrams": opt(expGelatinMass), "volumeML": opt(expGelatinVolume)],
-                "sugarMix": ["massGrams": opt(expSugarMass), "volumeML": opt(expSugarVolume)],
-                "activationMix": ["massGrams": opt(expActivationMass), "volumeML": opt(expActivationVolume)],
+            "sugarMixture": [
+                "beakerID": optStr(batch.hpSugarMixBeakerID),
+                "scaleID": optStr(batch.hpSugarMixScaleID),
+                "stirBarID": optStr(batch.hpSugarMixStirBarID),
+                "beakerTare": opt(batch.frozenSugarMixBeakerTare),
+                "hpGranulated": opt(batch.hpGranulated),
+                "hpGlucoseSyrup": opt(batch.hpGlucoseSyrup),
+                "hpSugarWater": opt(batch.hpSugarWater),
+                "individualGranulated": opt(batch.hpIndividualGranulated),
+                "individualGlucoseSyrup": opt(batch.hpIndividualGlucoseSyrup),
+                "individualSugarWater": opt(batch.hpIndividualSugarWater),
+                "mixTotal": opt(batch.hpSugarMixtureTotal),
             ],
-            "finalMix": [
-                "withOverage": ["massGrams": opt(expFinalMixMass), "volumeML": opt(expFinalMixVolume)],
-                "withoutOverage": ["massGrams": opt(expFinalMixMassNoOverage), "volumeML": opt(expFinalMixVolNoOverage)],
+            "activationMixture": [
+                "trayID": optStr(batch.hpActivationTrayID),
+                "scaleID": optStr(batch.hpActivationScaleID),
+                "trayTare": opt(batch.frozenActivationTrayTare),
+                "hpCitricAcid": opt(batch.hpCitricAcid),
+                "hpActivationWater": opt(batch.hpActivationWater),
+                "hpKSorbate": opt(batch.hpKSorbate),
+                "hpFlavorOilsTerpsActive": opt(batch.hpFlavorOilsTerpsActive),
+                "hpActivationTrayResidue": opt(batch.hpActivationTrayResidue),
+                "individualCitricAcid": opt(batch.hpIndividualCitricAcid),
+                "individualActivationWater": opt(batch.hpIndividualActivationWater),
+                "individualKSorbate": opt(batch.hpIndividualKSorbate),
+                "individualFlavorOilsTerps": opt(batch.hpIndividualFlavorOilsTerpsActive),
+                "mixTotal": opt(batch.hpActivationMixtureTotal),
+            ],
+            "transfer": [
+                "syringeID": optStr(batch.hpTransferSyringeID),
+                "scaleID": optStr(batch.hpTransferScaleID),
+                "substrateSugarTransfer": opt(batch.hpSubstrateSugarTransfer),
+                "substrateActivationTransfer": opt(batch.hpSubstrateActivationTransfer),
+                "syringeClean": opt(batch.weightSyringeEmpty),
+                "syringePlusMix": opt(batch.weightSyringeWithMix),
+                "syringeMixVol": opt(batch.volumeSyringeGummyMix),
+                "syringeResidue": opt(batch.weightSyringeResidue),
+            ],
+            "molds": [
+                "trayID": optStr(batch.hpMoldsTrayID),
+                "scaleID": optStr(batch.hpMoldsScaleID),
+                "trayClean": opt(batch.weightTrayClean),
+                "trayPlusResidue": opt(batch.weightTrayPlusResidue),
+                "moldsFilled": opt(batch.weightMoldsFilled),
+                "extraGummyMix": opt(batch.extraGummyMixGrams),
             ],
             "densities": [
                 "gelatinMix": opt(batch.calcGelatinMixDensity),
@@ -737,69 +856,239 @@ struct BatchExperimentalDataSection: View {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARK: - Error (Experimental vs Theoretical) Section
+// MARK: - Experiment Data 2 Section
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-struct BatchExperimentalErrorSection: View {
+struct BatchExperimentalData2Section: View {
     var batch: SavedBatch
     @Binding var copiedConfirmation: Bool
     @Binding var copiedLabel: String
     @Environment(SystemConfig.self) private var systemConfig
     @State private var isExpanded = false
 
+    private let colWidth: CGFloat = 58
+
     private var sortedComponents: [SavedBatchComponent] {
         batch.components.sorted { $0.sortOrder < $1.sortOrder }
     }
 
-    // MARK: - Theoretical values (from saved components)
+    private var sugarOverage: Double {
+        1.0 + batch.sugarMixtureOveragePercent / 100.0
+    }
+
+    // MARK: - Theoretical (from saved components)
 
     private var theoGelatinMass: Double {
+        sortedComponents.first { $0.label == "Gelatin" && $0.group == "Gelatin Mix" }?.massGrams ?? 0
+    }
+    private var theoGelatinWaterMass: Double {
+        sortedComponents.first { $0.label == "Water" && $0.group == "Gelatin Mix" }?.massGrams ?? 0
+    }
+    private var theoGelatinMixTotal: Double {
         sortedComponents.filter { $0.group == "Gelatin Mix" }.reduce(0.0) { $0 + $1.massGrams }
     }
+
+    // Sugar components — stored with overage already applied if batch was saved with overage,
+    // but we use the saved components directly since they represent the target amounts
+    private var theoGranulatedMass: Double {
+        sortedComponents.first { $0.label == "Granulated Sugar" && $0.group == "Sugar Mix" }?.massGrams ?? 0
+    }
+    private var theoGlucoseSyrupMass: Double {
+        sortedComponents.first { $0.label == "Glucose Syrup" && $0.group == "Sugar Mix" }?.massGrams ?? 0
+    }
+    private var theoSugarWaterMass: Double {
+        sortedComponents.first { $0.label == "Water" && $0.group == "Sugar Mix" }?.massGrams ?? 0
+    }
+    private var theoSugarMixTotal: Double {
+        sortedComponents.filter { $0.group == "Sugar Mix" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+
+    // Activation components
+    private var theoCitricAcidMass: Double {
+        sortedComponents.first { $0.label == "Citric Acid" }?.massGrams ?? 0
+    }
+    private var theoActivationWaterMass: Double {
+        sortedComponents.first { $0.label == "Activation Water" }?.massGrams ?? 0
+    }
+    private var theoKSorbateMass: Double {
+        sortedComponents.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
+    }
+    private var theoFlavorOilsTerpsMass: Double {
+        let total = sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.massGrams }
+        return total - theoCitricAcidMass - theoActivationWaterMass - theoKSorbateMass
+    }
+    private var theoActivationMixTotal: Double {
+        sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoTotalMass: Double {
+        theoGelatinMixTotal + theoSugarMixTotal + theoActivationMixTotal
+    }
+
+    // Theoretical volumes
     private var theoGelatinVol: Double {
         sortedComponents.filter { $0.group == "Gelatin Mix" }.reduce(0.0) { $0 + $1.volumeML }
-    }
-    private var theoSugarMass: Double {
-        sortedComponents.filter { $0.group == "Sugar Mix" }.reduce(0.0) { $0 + $1.massGrams }
     }
     private var theoSugarVol: Double {
         sortedComponents.filter { $0.group == "Sugar Mix" }.reduce(0.0) { $0 + $1.volumeML }
     }
-    private var theoActivationMass: Double {
-        sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.massGrams }
-    }
     private var theoActivationVol: Double {
         sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.volumeML }
     }
-    private var theoFinalMass: Double {
-        theoGelatinMass + theoSugarMass + theoActivationMass
+    private var theoTotalVol: Double { theoGelatinVol + theoSugarVol + theoActivationVol }
+
+    // Theoretical mixture densities
+    private var theoGelatinMixDensity: Double {
+        guard theoGelatinVol > 0 else { return 0 }
+        return theoGelatinMixTotal / theoGelatinVol
     }
-    private var theoFinalVol: Double {
-        theoGelatinVol + theoSugarVol + theoActivationVol
+    private var theoSugarMixDensity: Double {
+        guard theoSugarVol > 0 else { return 0 }
+        return theoSugarMixTotal / theoSugarVol
+    }
+    private var theoActivationMixDensity: Double {
+        guard theoActivationVol > 0 else { return 0 }
+        return theoActivationMixTotal / theoActivationVol
+    }
+    private var theoFinalMixDensity: Double {
+        guard theoTotalVol > 0 else { return 0 }
+        return theoTotalMass / theoTotalVol
     }
 
-    // MARK: - Experimental values
+    // MARK: - Experimental (from HP cumulative readings + frozen tares)
 
-    private var expGelatinMass: Double? { batch.calcMassGelatinAdded }
-    private var expSugarMass: Double? { batch.calcMassSugarAdded }
-    private var expActivationMass: Double? { batch.calcMassActiveAdded }
-    private var expFinalMass: Double? { batch.calcMassFinalMixtureInBeaker }
+    private var expGelatinMass: Double? { batch.hpIndividualGelatin }
+    private var expGelatinWaterMass: Double? { batch.hpIndividualGelatinWater }
+    private var expGelatinMixTotal: Double? { batch.hpGelatinMixtureTotal }
 
-    private var expGelatinVol: Double? {
-        guard let m = expGelatinMass, let d = batch.calcGelatinMixDensity, d > 0 else { return nil }
-        return m / d
+    private var expGranulatedMass: Double? { batch.hpIndividualGranulated }
+    private var expGlucoseSyrupMass: Double? { batch.hpIndividualGlucoseSyrup }
+    private var expSugarWaterMass: Double? { batch.hpIndividualSugarWater }
+    private var expSugarMixTotal: Double? { batch.hpSugarMixtureTotal }
+
+    private var expCitricAcidMass: Double? { batch.hpIndividualCitricAcid }
+    private var expActivationWaterMass: Double? { batch.hpIndividualActivationWater }
+    private var expKSorbateMass: Double? { batch.hpIndividualKSorbate }
+    private var expFlavorOilsTerpsMass: Double? { batch.hpIndividualFlavorOilsTerpsActive }
+    private var expActivationMixTotal: Double? { batch.hpActivationMixtureTotal }
+
+    // MARK: - Losses
+
+    private var calcBeakerResidue: Double? {
+        guard let residue = batch.weightBeakerResidue else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return residue - tare
     }
-    private var expSugarVol: Double? {
-        guard let m = expSugarMass, let d = batch.calcSugarMixDensity, d > 0 else { return nil }
-        return m / d
+
+    private var calcActivationTrayResidue: Double? {
+        guard let residue = batch.hpActivationTrayResidue else { return nil }
+        let tare = batch.frozenActivationTrayTare ?? 0
+        return residue - tare
     }
-    private var expActivationVol: Double? {
-        guard let m = expActivationMass, let d = batch.calcActiveMixDensity, d > 0 else { return nil }
-        return m / d
+
+    private var calcSyringeResidue: Double? {
+        guard let residue = batch.weightSyringeResidue else { return nil }
+        let tare = batch.frozenTransferSyringeTare ?? 0
+        return residue - tare
     }
-    private var expFinalVol: Double? {
-        guard let gv = expGelatinVol, let sv = expSugarVol, let av = expActivationVol else { return nil }
-        return gv + sv + av
+
+    private var calcTrayResidue: Double? {
+        guard let reading = batch.weightTrayPlusResidue else { return nil }
+        let tare = batch.frozenMoldsTrayTare ?? 0
+        return reading - tare
+    }
+
+    private var totalLossMass: Double? {
+        let values = [calcBeakerResidue, calcActivationTrayResidue, calcSyringeResidue, calcTrayResidue, batch.extraGummyMixGrams]
+        let available = values.compactMap { $0 }
+        guard !available.isEmpty else { return nil }
+        return available.reduce(0, +)
+    }
+
+    private var hpGummyMixtureMass: Double? {
+        guard let transfer = batch.hpSubstrateActivationTransfer else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return transfer - tare
+    }
+
+    private var totalActiveAmount: Double {
+        batch.activeConcentration * Double(batch.wellCount)
+    }
+
+    private var activeLostInLosses: Double? {
+        guard let loss = totalLossMass,
+              let mixMass = hpGummyMixtureMass,
+              mixMass > 0 else { return nil }
+        return totalActiveAmount * (loss / mixMass)
+    }
+
+    private var avgGummyDoseAfterLoss: Double? {
+        guard let lost = activeLostInLosses,
+              let moldsFilled = batch.weightMoldsFilled,
+              moldsFilled > 0 else { return nil }
+        return (totalActiveAmount - lost) / moldsFilled
+    }
+
+    // MARK: - Gummy Properties
+
+    private var theoGummyMass: Double {
+        let gummies = Double(batch.wellCount)
+        guard gummies > 0 else { return 0 }
+        return theoTotalMass / gummies
+    }
+
+    private var theoGummyVolume: Double {
+        guard theoTotalVol > 0, batch.wellCount > 0 else { return 0 }
+        return theoTotalVol / Double(batch.wellCount)
+    }
+
+    private var theoGummyConcentration: Double {
+        batch.activeConcentration
+    }
+
+    private var expGummyMass: Double? {
+        guard let mixMass = hpGummyMixtureMass,
+              let losses = totalLossMass,
+              let molds = batch.weightMoldsFilled,
+              molds > 0 else { return nil }
+        return (mixMass - losses) / molds
+    }
+
+    private var expGummyVolume: Double? {
+        guard let mass = expGummyMass,
+              let density = batch.calcDensityFinalMix,
+              density > 0 else { return nil }
+        return mass / density
+    }
+
+    private var expGummyConcentration: Double? {
+        avgGummyDoseAfterLoss
+    }
+
+    // MARK: - Mass Fractions
+
+    private var theoCitricAcidFraction: Double {
+        guard theoTotalMass > 0 else { return 0 }
+        return (theoCitricAcidMass / theoTotalMass) * 100.0
+    }
+    private var expCitricAcidFraction: Double? {
+        guard let citric = expCitricAcidMass, let mixMass = hpGummyMixtureMass, mixMass > 0 else { return nil }
+        return (citric / mixMass) * 100.0
+    }
+    private var theoKSorbateFraction: Double {
+        guard theoTotalMass > 0 else { return 0 }
+        return (theoKSorbateMass / theoTotalMass) * 100.0
+    }
+    private var expKSorbateFraction: Double? {
+        guard let k = expKSorbateMass, let mixMass = hpGummyMixtureMass, mixMass > 0 else { return nil }
+        return (k / mixMass) * 100.0
+    }
+    private var theoGelatinFraction: Double {
+        guard theoTotalMass > 0 else { return 0 }
+        return (theoGelatinMass / theoTotalMass) * 100.0
+    }
+    private var expGelatinFraction: Double? {
+        guard let gel = expGelatinMass, let mixMass = hpGummyMixtureMass, mixMass > 0 else { return nil }
+        return (gel / mixMass) * 100.0
     }
 
     // MARK: - Body
@@ -807,70 +1096,164 @@ struct BatchExperimentalErrorSection: View {
     var body: some View {
         VStack(spacing: 0) {
             CMCollapsibleHeader(
-                title: "Error (Exp. vs Theoretical)",
+                title: "Experiment Data 2",
                 isExpanded: $isExpanded,
                 accentColor: systemConfig.designTitle,
-                copyAction: { BatchDetailCopyUtility.copyJSON(errorJSON(), label: "Error (Exp. vs Theoretical)", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+                copyAction: { BatchDetailCopyUtility.copyJSON(expData2JSON(), label: "Experiment Data 2", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
             )
 
             if isExpanded {
-                ThemedDivider(indent: 16)
+                ThemedDivider()
 
-                VStack(spacing: 0) {
-                    // Mass Error
-                    errorMassSubheader("Mass Error")
-                    errorMassRow("Gelatin Mix",    theoretical: theoGelatinMass,    experimental: expGelatinMass)
-                    errorMassRow("Sugar Mix",      theoretical: theoSugarMass,      experimental: expSugarMass)
-                    errorMassRow("Activation Mix", theoretical: theoActivationMass, experimental: expActivationMass)
-                    errorMassRow("Final Mix",      theoretical: theoFinalMass,      experimental: expFinalMass, bold: true)
-                        .background(CMTheme.totalRowBG)
+                // MARK: Gelatin Mixture
+                comparisonSubheader("Gelatin Mixture")
+                comparisonRow("Gelatin", theoretical: theoGelatinMass, experimental: expGelatinMass)
+                comparisonRow("Water", theoretical: theoGelatinWaterMass, experimental: expGelatinWaterMass)
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                comparisonRow("Gelatin Mix Total", theoretical: theoGelatinMixTotal, experimental: expGelatinMixTotal, bold: true)
+                    .background(CMTheme.totalRowBG)
 
-                    ThemedDivider(indent: 16).padding(.top, 8)
+                ThemedDivider(indent: 20).padding(.vertical, 8)
 
-                    // Volume Error
-                    errorVolSubheader("Volume Error")
-                    errorVolRow("Gelatin Mix",    theoretical: theoGelatinVol,    experimental: expGelatinVol)
-                    errorVolRow("Sugar Mix",      theoretical: theoSugarVol,      experimental: expSugarVol)
-                    errorVolRow("Activation Mix", theoretical: theoActivationVol, experimental: expActivationVol)
-                    errorVolRow("Final Mix",      theoretical: theoFinalVol,      experimental: expFinalVol, bold: true)
-                        .background(CMTheme.totalRowBG)
+                // MARK: Sugar Mixture
+                comparisonSubheader("Sugar Mixture")
+                comparisonRow("Granulated Sugar", theoretical: theoGranulatedMass, experimental: expGranulatedMass)
+                comparisonRow("Glucose Syrup", theoretical: theoGlucoseSyrupMass, experimental: expGlucoseSyrupMass)
+                comparisonRow("Water", theoretical: theoSugarWaterMass, experimental: expSugarWaterMass)
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                comparisonRow("Sugar Mix Total", theoretical: theoSugarMixTotal, experimental: expSugarMixTotal, bold: true)
+                    .background(CMTheme.totalRowBG)
 
-                    Spacer().frame(height: 12)
+                if batch.sugarMixtureOveragePercent > 0 {
+                    Text(String(format: "Sugar theoretical values include %.0f%% overage.", batch.sugarMixtureOveragePercent))
+                        .cmMono10()
+                        .foregroundStyle(CMTheme.textTertiary)
+                        .padding(.horizontal, 20).padding(.top, 4)
                 }
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Activation Mixture
+                comparisonSubheader("Activation Mixture")
+                comparisonRow("Citric Acid", theoretical: theoCitricAcidMass, experimental: expCitricAcidMass)
+                comparisonRow("Activation Water", theoretical: theoActivationWaterMass, experimental: expActivationWaterMass)
+                comparisonRow("K Sorbate", theoretical: theoKSorbateMass, experimental: expKSorbateMass)
+                comparisonRow("Oils/Terps/Active", theoretical: theoFlavorOilsTerpsMass, experimental: expFlavorOilsTerpsMass)
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                comparisonRow("Activation Mix Total", theoretical: theoActivationMixTotal, experimental: expActivationMixTotal, bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Mixture Densities
+                densitySubheader("Mixture Densities")
+                densityRow("Gelatin Mix", theoretical: theoGelatinMixDensity, experimental: batch.calcGelatinMixDensity)
+                densityRow("Sugar Mix", theoretical: theoSugarMixDensity, experimental: batch.calcSugarMixDensity)
+                densityRow("Activation Mix", theoretical: theoActivationMixDensity, experimental: batch.calcActiveMixDensity)
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                densityRow("Gummy Mixture", theoretical: theoFinalMixDensity, experimental: batch.calcDensityFinalMix, bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Losses
+                lossesSubheader("Losses")
+                lossRow("Beaker Residue", value: calcBeakerResidue)
+                lossRow("Activation Tray Residue", value: calcActivationTrayResidue)
+                lossRow("Syringe Residue", value: calcSyringeResidue)
+                lossRow("Tray Residue", value: calcTrayResidue)
+                lossRow("Extra Gummy Mixture", value: batch.extraGummyMixGrams)
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                lossRow("Total Losses", value: totalLossMass, bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Active Lost
+                activeLostSubheader("Active Lost")
+                lossRow("Gummy Mixture Mass", value: hpGummyMixtureMass)
+                lossRow("Total Active", value: totalActiveAmount, unit: batch.activeUnit)
+                lossRow("Total Losses", value: totalLossMass)
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                lossRow("Active Lost", value: activeLostInLosses, unit: batch.activeUnit, bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Gummies
+                gummySubheader("Gummies")
+                gummyRow("Volume", theoretical: theoGummyVolume, experimental: expGummyVolume, unit: "mL", format: "%.3f")
+                gummyRow("Mass", theoretical: theoGummyMass, experimental: expGummyMass, unit: "g", format: "%.3f")
+                gummyRow("Concentration", theoretical: theoGummyConcentration, experimental: expGummyConcentration, unit: batch.activeUnit, format: "%.3f")
+                massFractionRow("Citric Acid", theoretical: theoCitricAcidFraction, experimental: expCitricAcidFraction)
+                massFractionRow("K Sorbate", theoretical: theoKSorbateFraction, experimental: expKSorbateFraction)
+                massFractionRow("Gelatin", theoretical: theoGelatinFraction, experimental: expGelatinFraction)
+
+                if !hasAnyData {
+                    Text("Record high-precision weight measurements to populate experimental data.")
+                        .cmFootnote()
+                        .padding(.horizontal, 16).padding(.top, 8)
+                }
+
+                Spacer().frame(height: 12)
             }
         }
     }
 
-    // MARK: - Helpers
-
-    private func errorMassSubheader(_ title: String) -> some View {
-        CMTwoColumnSubheader(title: title, col1: "Δ (g)", col2: "Δ (%)", bottomPadding: 2)
+    private var hasAnyData: Bool {
+        expGelatinMass != nil || expGranulatedMass != nil || expCitricAcidMass != nil
+        || batch.calcGelatinMixDensity != nil || batch.calcSugarMixDensity != nil
+        || batch.calcActiveMixDensity != nil || batch.calcDensityFinalMix != nil
     }
 
-    private func errorVolSubheader(_ title: String) -> some View {
-        CMTwoColumnSubheader(title: title, col1: "Δ (mL)", col2: "Δ (%)", bottomPadding: 2)
+    // MARK: - Sub-views
+
+    private func comparisonSubheader(_ title: String) -> some View {
+        HStack {
+            Text(title).cmSubsectionTitle()
+            Spacer()
+            Text("theo (g)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("exp (g)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("Δ (g)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("Δ (%)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+        }
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
     }
 
-    private func errorMassRow(_ label: String, theoretical: Double, experimental: Double?, bold: Bool = false) -> some View {
-        errorRow(label, theoretical: theoretical, experimental: experimental, unitFmt: "%.3f", bold: bold)
-    }
-
-    private func errorVolRow(_ label: String, theoretical: Double, experimental: Double?, bold: Bool = false) -> some View {
-        errorRow(label, theoretical: theoretical, experimental: experimental, unitFmt: "%.3f", bold: bold)
-    }
-
-    private func errorRow(_ label: String, theoretical: Double, experimental: Double?, unitFmt: String, bold: Bool = false) -> some View {
+    private func comparisonRow(
+        _ label: String,
+        theoretical: Double,
+        experimental: Double?,
+        bold: Bool = false
+    ) -> some View {
         let delta: Double? = experimental.map { $0 - theoretical }
         let pctError: Double? = delta.map { theoretical > 0 ? ($0 / theoretical) * 100.0 : 0.0 }
 
-        return HStack(spacing: 6) {
+        return HStack(spacing: 4) {
             Text(label)
                 .cmMono12()
                 .fontWeight(bold ? .bold : .regular)
                 .foregroundStyle(CMTheme.textPrimary)
-                .lineLimit(1).minimumScaleFactor(0.8)
+                .lineLimit(1).minimumScaleFactor(0.7)
             Spacer()
-            // Absolute error
+            Text(String(format: "%.3f", theoretical))
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textSecondary)
+                .frame(width: colWidth, alignment: .trailing)
+            Text(experimental.map { String(format: "%.3f", $0) } ?? "—")
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(experimental == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+                .frame(width: colWidth, alignment: .trailing)
             Group {
                 if let d = delta {
                     Text(String(format: "%+.3f", d))
@@ -882,8 +1265,7 @@ struct BatchExperimentalErrorSection: View {
             }
             .cmMono12()
             .fontWeight(bold ? .bold : .regular)
-            .frame(width: 70, alignment: .trailing)
-            // Relative error
+            .frame(width: colWidth, alignment: .trailing)
             Group {
                 if let p = pctError {
                     Text(String(format: "%+.2f", p))
@@ -895,12 +1277,11 @@ struct BatchExperimentalErrorSection: View {
             }
             .cmMono12()
             .fontWeight(bold ? .bold : .regular)
-            .frame(width: 70, alignment: .trailing)
+            .frame(width: colWidth, alignment: .trailing)
         }
         .cmDataRowPadding()
     }
 
-    /// Color based on magnitude of percent error: green ≤2%, yellow 2-5%, red >5%
     private func errorColor(pct: Double) -> Color {
         if pct <= 2.0 {
             return CMTheme.success
@@ -911,310 +1292,901 @@ struct BatchExperimentalErrorSection: View {
         }
     }
 
-    // MARK: - JSON
+    // MARK: - Density sub-views
 
-    private func errorJSON() -> [String: Any] {
-        func errEntry(label: String, theo: Double, exp: Double?) -> [String: Any] {
-            guard let e = exp else { return ["label": label, "theoretical": theo] as [String: Any] }
-            let delta = e - theo
-            let pct = theo > 0 ? (delta / theo) * 100.0 : 0.0
-            return ["label": label, "theoretical": theo, "experimental": e, "delta": delta, "relativeErrorPct": pct] as [String: Any]
-        }
-        return [
-            "massError": [
-                errEntry(label: "Gelatin Mix", theo: theoGelatinMass, exp: expGelatinMass),
-                errEntry(label: "Sugar Mix", theo: theoSugarMass, exp: expSugarMass),
-                errEntry(label: "Activation Mix", theo: theoActivationMass, exp: expActivationMass),
-                errEntry(label: "Final Mix", theo: theoFinalMass, exp: expFinalMass),
-            ],
-            "volumeError": [
-                errEntry(label: "Gelatin Mix", theo: theoGelatinVol, exp: expGelatinVol),
-                errEntry(label: "Sugar Mix", theo: theoSugarVol, exp: expSugarVol),
-                errEntry(label: "Activation Mix", theo: theoActivationVol, exp: expActivationVol),
-                errEntry(label: "Final Mix", theo: theoFinalVol, exp: expFinalVol),
-            ],
-        ] as [String: Any]
-    }
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARK: - Measurements Section
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-struct BatchMeasurementsSection: View {
-    var batch: SavedBatch
-    @Binding var copiedConfirmation: Bool
-    @Binding var copiedLabel: String
-    @Environment(SystemConfig.self) private var systemConfig
-    @State private var isExpanded = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            CMCollapsibleHeader(
-                title: "Measurements",
-                isExpanded: $isExpanded,
-                accentColor: systemConfig.designTitle,
-                copyAction: { BatchDetailCopyUtility.copyJSON(measurementsJSON(), label: "Measurements", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            )
-
-            if isExpanded {
-            VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    measureSubsection("Initial mass of container")
-                    savedWeightRow("Beaker (Empty)",          value: batch.weightBeakerEmpty)
-
-                    measureSubsection("Add gelatin mixture")
-                    savedWeightRow("Beaker + Gelatin Mix",    value: batch.weightBeakerPlusGelatin)
-
-                    measureSubsection("Add sugar mixture")
-                    savedWeightRow("Substrate + Sugar Mix",   value: batch.weightBeakerPlusSugar)
-
-                    measureSubsection("Add activation mixture")
-                    savedWeightRow("Substrate + Activation Mix", value: batch.weightBeakerPlusActive)
-                }
-
-                VStack(spacing: 0) {
-                    measureSubsection("Transfer Gummy Mixture")
-                    if let syringeID = batch.hpTransferSyringeID {
-                        savedInfoRow("Syringe", value: syringeID)
-                    }
-                    if let scaleID = batch.hpTransferScaleID {
-                        savedInfoRow("Scale", value: scaleID)
-                    }
-                    savedWeightRow("Syringe (Clean)",         value: batch.weightSyringeEmpty)
-                    savedWeightRow("Syringe + Gummy Mix",     value: batch.weightSyringeWithMix)
-                    savedVolumeRow("Syringe Gummy Mix Vol",   value: batch.volumeSyringeGummyMix)
-                    savedWeightRow("Syringe + Residue",       value: batch.weightSyringeResidue)
-
-                    measureSubsection("Molds")
-                    if let trayID = batch.hpMoldsTrayID {
-                        savedInfoRow("Tray", value: trayID)
-                    }
-                    if let scaleID = batch.hpMoldsScaleID {
-                        savedInfoRow("Scale", value: scaleID)
-                    }
-                    savedWeightRow("Tray (Clean)",            value: batch.weightTrayClean)
-                    savedWeightRow("Tray + Residue",          value: batch.weightTrayPlusResidue)
-                    savedMoldsRow("Molds Filled",             value: batch.weightMoldsFilled)
-                    savedWeightRow("Extra Gummy Mix",         value: batch.extraGummyMixGrams)
-                }
-
-                VStack(spacing: 0) {
-                    measureSubsection("Mixture Densities — Sugar Mix")
-                    savedWeightRow("Syringe (Clean)",         value: batch.densitySyringeCleanSugar)
-                    savedWeightRow("Syringe + Sugar Mix",     value: batch.densitySyringePlusSugarMass)
-                    savedVolumeRow("Syringe + Sugar Mix Vol",  value: batch.densitySyringePlusSugarVol)
-
-                    measureSubsection("Mixture Densities — Gelatin Mix")
-                    savedWeightRow("Syringe (Clean)",         value: batch.densitySyringeCleanGelatin)
-                    savedWeightRow("Syringe + Gelatin Mix",   value: batch.densitySyringePlusGelatinMass)
-                    savedVolumeRow("Syringe + Gelatin Mix Vol", value: batch.densitySyringePlusGelatinVol)
-                }
-
-                VStack(spacing: 0) {
-                    measureSubsection("Mixture Densities — Activation Mix")
-                    savedWeightRow("Syringe (Clean)",         value: batch.densitySyringeCleanActive)
-                    savedWeightRow("Syringe + Activation Mix", value: batch.densitySyringePlusActiveMass)
-                    savedVolumeRow("Syringe + Activation Mix Vol", value: batch.densitySyringePlusActiveVol)
-                }
-            }
-
-            Spacer().frame(height: 8)
-            } // end if isExpanded
-        }
-    }
-
-    // MARK: - Helpers
-
-    private func measureSubsection(_ title: String) -> some View {
+    private func densitySubheader(_ title: String) -> some View {
         HStack {
-            Text(title).cmFootnote().fontWeight(.semibold)
+            Text(title).cmSubsectionTitle()
             Spacer()
+            Text("theo (g/mL)")
+                .cmFinePrint()
+                .frame(width: colWidth + 6, alignment: .trailing)
+            Text("exp (g/mL)")
+                .cmFinePrint()
+                .frame(width: colWidth + 6, alignment: .trailing)
+            Text("Δ (g/mL)")
+                .cmFinePrint()
+                .frame(width: colWidth + 6, alignment: .trailing)
+            Text("Δ (%)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
         }
-        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 2)
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
     }
 
-    private func savedWeightRow(_ label: String, value: Double?) -> some View {
-        HStack(spacing: 6) {
-            Text(label).cmRowLabel()
-            Spacer()
-            Text(value.map { String(format: "%.3f", $0) } ?? "—")
-                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
-            Text("g").cmUnitSlot(width: 38)
-        }
-        .cmSavedRowPadding()
-    }
+    private func densityRow(
+        _ label: String,
+        theoretical: Double,
+        experimental: Double?,
+        bold: Bool = false
+    ) -> some View {
+        let delta: Double? = experimental.map { $0 - theoretical }
+        let pctError: Double? = delta.map { theoretical > 0 ? ($0 / theoretical) * 100.0 : 0.0 }
 
-    private func savedVolumeRow(_ label: String, value: Double?) -> some View {
-        HStack(spacing: 6) {
-            Text(label).cmRowLabel()
+        return HStack(spacing: 4) {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
             Spacer()
-            Text(value.map { String(format: "%.3f", $0) } ?? "—")
-                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
-            Text("mL").cmUnitSlot(width: 38)
-        }
-        .cmSavedRowPadding()
-    }
-
-    private func savedInfoRow(_ label: String, value: String) -> some View {
-        HStack(spacing: 6) {
-            Text(label).cmRowLabel()
-            Spacer()
-            Text(value)
-                .cmMono11()
+            Text(String(format: "%.4f", theoretical))
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
                 .foregroundStyle(CMTheme.textSecondary)
+                .frame(width: colWidth + 6, alignment: .trailing)
+            Text(experimental.map { String(format: "%.4f", $0) } ?? "—")
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(experimental == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+                .frame(width: colWidth + 6, alignment: .trailing)
+            Group {
+                if let d = delta {
+                    Text(String(format: "%+.4f", d))
+                        .foregroundStyle(errorColor(pct: abs(pctError ?? 0)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: colWidth + 6, alignment: .trailing)
+            Group {
+                if let p = pctError {
+                    Text(String(format: "%+.2f", p))
+                        .foregroundStyle(errorColor(pct: abs(p)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: colWidth, alignment: .trailing)
         }
-        .cmSavedRowPadding()
+        .cmDataRowPadding()
     }
 
-    private func savedMoldsRow(_ label: String, value: Double?) -> some View {
-        HStack(spacing: 6) {
-            Text(label).cmRowLabel()
+    // MARK: - Losses sub-views
+
+    private func lossesSubheader(_ title: String) -> some View {
+        HStack {
+            Text(title).cmSubsectionTitle()
             Spacer()
-            Text(value.map { String(format: "%.1f", $0) } ?? "—")
-                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textSecondary)
-            Text("#").cmUnitSlot(width: 38)
+            Text("exp (g)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("")
+                .frame(width: 28, alignment: .leading)
         }
-        .cmSavedRowPadding()
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
     }
 
-    // MARK: - JSON
-
-    private func measurementsJSON() -> [String: Any] {
-        func opt(_ v: Double?) -> Any { v as Any }
-        return [
-            "initialMass": ["beakerEmpty": opt(batch.weightBeakerEmpty)],
-            "gelatinMixture": ["beakerPlusGelatin": opt(batch.weightBeakerPlusGelatin)],
-            "sugarMixture": ["substratePlusSugar": opt(batch.weightBeakerPlusSugar)],
-            "activationMixture": ["substratePlusActivation": opt(batch.weightBeakerPlusActive)],
-            "transferGummyMixture": ["syringeID": batch.hpTransferSyringeID as Any, "scaleID": batch.hpTransferScaleID as Any, "syringeClean": opt(batch.weightSyringeEmpty), "syringePlusMix": opt(batch.weightSyringeWithMix), "syringeMixVolML": opt(batch.volumeSyringeGummyMix), "syringeResidue": opt(batch.weightSyringeResidue)],
-            "molds": ["trayID": batch.hpMoldsTrayID as Any, "scaleID": batch.hpMoldsScaleID as Any, "trayClean": opt(batch.weightTrayClean), "trayPlusResidue": opt(batch.weightTrayPlusResidue), "moldsFilled": opt(batch.weightMoldsFilled), "extraGummyMixGrams": opt(batch.extraGummyMixGrams)],
-            "densities": [
-                "sugarMix": ["syringeClean": opt(batch.densitySyringeCleanSugar), "syringePlusMass": opt(batch.densitySyringePlusSugarMass), "syringePlusVol": opt(batch.densitySyringePlusSugarVol)],
-                "gelatinMix": ["syringeClean": opt(batch.densitySyringeCleanGelatin), "syringePlusMass": opt(batch.densitySyringePlusGelatinMass), "syringePlusVol": opt(batch.densitySyringePlusGelatinVol)],
-                "activationMix": ["syringeClean": opt(batch.densitySyringeCleanActive), "syringePlusMass": opt(batch.densitySyringePlusActiveMass), "syringePlusVol": opt(batch.densitySyringePlusActiveVol)],
-            ],
-        ] as [String: Any]
-    }
-}
-
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// MARK: - Calculations Section
-// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-struct BatchCalculationsSection: View {
-    var batch: SavedBatch
-    @Binding var copiedConfirmation: Bool
-    @Binding var copiedLabel: String
-    @Environment(SystemConfig.self) private var systemConfig
-    @State private var isExpanded = false
-
-    private var savedOverageForNextBatch: Double? {
-        guard let avgVol = batch.calcAverageGummyVolume,
-              batch.wellCount > 0,
-              batch.vBaseML > 0 else { return nil }
-        let volPerWell = batch.vBaseML / Double(batch.wellCount)
-        return avgVol / volPerWell
-    }
-
-    private var massTrayResidue: Double? {
-        guard let a = batch.weightTrayPlusResidue,
-              let b = batch.weightTrayClean else { return nil }
-        return a - b
-    }
-
-    private var massTotalLossWithSurplus: Double? {
-        guard let base = batch.calcMassTotalLoss else { return nil }
-        return base + (batch.extraGummyMixGrams ?? 0.0) + (massTrayResidue ?? 0.0)
-    }
-
-    var body: some View {
-        VStack(spacing: 0) {
-            CMCollapsibleHeader(
-                title: "Experiment Data",
-                isExpanded: $isExpanded,
-                accentColor: systemConfig.designTitle,
-                copyAction: { BatchDetailCopyUtility.copyJSON(calculationsJSON(), label: "Experiment Data", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
-            )
-
-            if isExpanded {
-            VStack(spacing: 0) {
-                measureSubsection("Input Mixtures")
-                savedCalcRow("Gelatin Mix Added",         value: batch.calcMassGelatinAdded,         unit: "g")
-                savedCalcRow("Sugar Mix Added",           value: batch.calcMassSugarAdded,           unit: "g")
-                savedCalcRow("Activation Mix Added",      value: batch.calcMassActiveAdded,          unit: "g")
-
-                measureSubsection("Final Mixture")
-                savedCalcRow("Final Mixture in Beaker",   value: batch.calcMassFinalMixtureInBeaker, unit: "g")
-                savedCalcRow("Final Mixture in Tray/s",   value: batch.calcMassMixTransferredToMold, unit: "g")
-
-                measureSubsection("Losses")
-                savedCalcRow("Beaker Residue",            value: batch.calcMassBeakerResidue,        unit: "g")
-            }
-
-            VStack(spacing: 0) {
-                savedCalcRow("Syringe Residue",           value: batch.calcMassSyringeResidue,       unit: "g")
-                savedCalcRow("Gummy Mixture Surplus",     value: batch.extraGummyMixGrams,              unit: "g")
-                savedCalcRow("Tray Residue",              value: massTrayResidue,                    unit: "g")
-                savedCalcRow("Total Residue",             value: massTotalLossWithSurplus ?? batch.calcMassTotalLoss, unit: "g")
-                    .background(CMTheme.rowHighlight)
-                savedCalcRow("Lost \(batch.activeName) in Residue", value: batch.calcActiveLoss, unit: batch.activeUnit)
-
-                measureSubsection("Mixture Densities")
-                savedCalcRow("Sugar Mix Density",         value: batch.calcSugarMixDensity,          unit: "g/mL", decimals: 4)
-                savedCalcRow("Gelatin Mix Density",       value: batch.calcGelatinMixDensity,        unit: "g/mL", decimals: 4)
-                savedCalcRow("Activation Mix Density",    value: batch.calcActiveMixDensity,         unit: "g/mL", decimals: 4)
-                savedCalcRow("Gummy Mixture Density",     value: batch.calcDensityFinalMix,          unit: "g/mL", decimals: 4)
-            }
-
-            VStack(spacing: 0) {
-                measureSubsection("Gummies")
-                savedCalcRow("Average Gummy Mass",        value: batch.calcMassPerGummyMold,         unit: "g")
-                savedCalcRow("Average Gummy Volume",      value: batch.calcAverageGummyVolume,       unit: "mL", decimals: 3)
-                savedCalcRow("Avg Gummy Active Dose",     value: batch.calcAverageGummyActiveDose,   unit: batch.activeUnit)
-
-                measureSubsection("Overage")
-                savedCalcRow("Overage for Next Batch",     value: savedOverageForNextBatch, unit: "", decimals: 4)
-            }
-
-            Spacer().frame(height: 8)
-            } // end if isExpanded
+    private func lossRow(
+        _ label: String,
+        value: Double?,
+        unit: String = "g",
+        bold: Bool = false
+    ) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Spacer()
+            Text(value.map { String(format: "%.3f", $0) } ?? "—")
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(value == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+                .frame(width: colWidth, alignment: .trailing)
+            Text(unit)
+                .cmMono12()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: 28, alignment: .leading)
         }
+        .cmDataRowPadding()
     }
 
-    // MARK: - Helpers
-
-    private func measureSubsection(_ title: String) -> some View {
+    private func activeLostSubheader(_ title: String) -> some View {
         HStack {
             Text(title).cmSubsectionTitle()
             Spacer()
         }
-        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 2)
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
     }
 
-    private func savedCalcRow(_ label: String, value: Double?, unit: String, decimals: Int = 3) -> some View {
-        HStack(spacing: 6) {
-            Text(label).cmRowLabel()
+    // MARK: - Gummy sub-views
+
+    private func gummySubheader(_ title: String) -> some View {
+        HStack {
+            Text(title).cmSubsectionTitle()
             Spacer()
-            Text(value.map { String(format: "%.\(decimals)f", $0) } ?? "—")
-                .cmValueSlot(color: value == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
-            Text(unit).cmUnitSlot(width: 38)
+            Text("theo")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("exp")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("Δ")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
+            Text("Δ (%)")
+                .cmFinePrint()
+                .frame(width: colWidth, alignment: .trailing)
         }
-        .cmSavedRowPadding()
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+    }
+
+    private func gummyRow(
+        _ label: String,
+        theoretical: Double,
+        experimental: Double?,
+        unit: String,
+        format: String = "%.3f",
+        pctFormat: String = "%.2f"
+    ) -> some View {
+        let delta: Double? = experimental.map { $0 - theoretical }
+        let pctError: Double? = delta.map { theoretical > 0 ? ($0 / theoretical) * 100.0 : 0.0 }
+
+        return HStack(spacing: 4) {
+            Text("\(label) (\(unit))")
+                .cmMono12()
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Spacer()
+            Text(String(format: format, theoretical))
+                .cmMono12()
+                .foregroundStyle(CMTheme.textSecondary)
+                .frame(width: colWidth, alignment: .trailing)
+            Text(experimental.map { String(format: format, $0) } ?? "—")
+                .cmMono12()
+                .foregroundStyle(experimental == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+                .frame(width: colWidth, alignment: .trailing)
+            Group {
+                if let d = delta {
+                    Text(String(format: "%+\(format.dropFirst())", d))
+                        .foregroundStyle(errorColor(pct: abs(pctError ?? 0)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .frame(width: colWidth, alignment: .trailing)
+            Group {
+                if let p = pctError {
+                    Text(String(format: "%+\(pctFormat.dropFirst())", p))
+                        .foregroundStyle(errorColor(pct: abs(p)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .frame(width: colWidth, alignment: .trailing)
+        }
+        .cmDataRowPadding()
+    }
+
+    private func massFractionRow(
+        _ label: String,
+        theoretical: Double,
+        experimental: Double?
+    ) -> some View {
+        let pctError: Double? = experimental.map { theoretical > 0 ? (($0 - theoretical) / theoretical) * 100.0 : 0.0 }
+
+        return HStack(spacing: 4) {
+            Text("\(label) (%)")
+                .cmMono12()
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Spacer()
+            Text(String(format: "%.3f", theoretical))
+                .cmMono12()
+                .foregroundStyle(CMTheme.textSecondary)
+                .frame(width: colWidth, alignment: .trailing)
+            Text(experimental.map { String(format: "%.3f", $0) } ?? "—")
+                .cmMono12()
+                .foregroundStyle(experimental == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
+                .frame(width: colWidth, alignment: .trailing)
+            Text("—")
+                .cmMono12()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: colWidth, alignment: .trailing)
+            Group {
+                if let p = pctError {
+                    Text(String(format: "%+.2f", p))
+                        .foregroundStyle(errorColor(pct: abs(p)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .frame(width: colWidth, alignment: .trailing)
+        }
+        .cmDataRowPadding()
     }
 
     // MARK: - JSON
 
-    private func calculationsJSON() -> [String: Any] {
+    private func expData2JSON() -> [String: Any] {
         func opt(_ v: Double?) -> Any { v as Any }
         return [
-            "inputMixtures": ["gelatinMixAdded": opt(batch.calcMassGelatinAdded), "sugarMixAdded": opt(batch.calcMassSugarAdded), "activationMixAdded": opt(batch.calcMassActiveAdded)],
-            "finalMixture": ["inBeaker": opt(batch.calcMassFinalMixtureInBeaker), "inTrays": opt(batch.calcMassMixTransferredToMold)],
-            "losses": ["beakerResidue": opt(batch.calcMassBeakerResidue), "syringeResidue": opt(batch.calcMassSyringeResidue), "gummyMixtureSurplus": opt(batch.extraGummyMixGrams), "trayResidue": opt(massTrayResidue), "totalResidue": opt(massTotalLossWithSurplus ?? batch.calcMassTotalLoss), "lostActive": opt(batch.calcActiveLoss)],
-            "densities": ["sugarMix": opt(batch.calcSugarMixDensity), "gelatinMix": opt(batch.calcGelatinMixDensity), "activationMix": opt(batch.calcActiveMixDensity), "gummyMixture": opt(batch.calcDensityFinalMix)],
-            "gummies": ["avgMass_g": opt(batch.calcMassPerGummyMold), "avgVolume_mL": opt(batch.calcAverageGummyVolume), "avgActiveDose": opt(batch.calcAverageGummyActiveDose)],
-            "overage": ["overageForNextBatch": opt(savedOverageForNextBatch)],
+            "gelatinMixture": [
+                "theoGelatin": theoGelatinMass, "expGelatin": opt(expGelatinMass),
+                "theoWater": theoGelatinWaterMass, "expWater": opt(expGelatinWaterMass),
+                "theoTotal": theoGelatinMixTotal, "expTotal": opt(expGelatinMixTotal),
+            ],
+            "sugarMixture": [
+                "theoGranulated": theoGranulatedMass, "expGranulated": opt(expGranulatedMass),
+                "theoGlucoseSyrup": theoGlucoseSyrupMass, "expGlucoseSyrup": opt(expGlucoseSyrupMass),
+                "theoWater": theoSugarWaterMass, "expWater": opt(expSugarWaterMass),
+                "theoTotal": theoSugarMixTotal, "expTotal": opt(expSugarMixTotal),
+            ],
+            "activationMixture": [
+                "theoCitricAcid": theoCitricAcidMass, "expCitricAcid": opt(expCitricAcidMass),
+                "theoActivationWater": theoActivationWaterMass, "expActivationWater": opt(expActivationWaterMass),
+                "theoKSorbate": theoKSorbateMass, "expKSorbate": opt(expKSorbateMass),
+                "theoOilsTerps": theoFlavorOilsTerpsMass, "expOilsTerps": opt(expFlavorOilsTerpsMass),
+                "theoTotal": theoActivationMixTotal, "expTotal": opt(expActivationMixTotal),
+            ],
+            "densities": [
+                "gelatinMix": ["theo": theoGelatinMixDensity, "exp": opt(batch.calcGelatinMixDensity)],
+                "sugarMix": ["theo": theoSugarMixDensity, "exp": opt(batch.calcSugarMixDensity)],
+                "activationMix": ["theo": theoActivationMixDensity, "exp": opt(batch.calcActiveMixDensity)],
+                "gummyMixture": ["theo": theoFinalMixDensity, "exp": opt(batch.calcDensityFinalMix)],
+            ],
+            "losses": [
+                "beakerResidue": opt(calcBeakerResidue),
+                "activationTrayResidue": opt(calcActivationTrayResidue),
+                "syringeResidue": opt(calcSyringeResidue),
+                "trayResidue": opt(calcTrayResidue),
+                "extraGummyMix": opt(batch.extraGummyMixGrams),
+                "totalLosses": opt(totalLossMass),
+            ],
+            "activeLost": [
+                "gummyMixtureMass": opt(hpGummyMixtureMass),
+                "totalActive": totalActiveAmount,
+                "activeLost": opt(activeLostInLosses),
+            ],
+            "gummies": [
+                "theoVolume": theoGummyVolume, "expVolume": opt(expGummyVolume),
+                "theoMass": theoGummyMass, "expMass": opt(expGummyMass),
+                "theoConcentration": theoGummyConcentration, "expConcentration": opt(expGummyConcentration),
+            ],
         ] as [String: Any]
+    }
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MARK: - Sig Fig Section
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+struct BatchSigFigSection: View {
+    var batch: SavedBatch
+    @Binding var copiedConfirmation: Bool
+    @Binding var copiedLabel: String
+    @Environment(SystemConfig.self) private var systemConfig
+    @State private var isExpanded = false
+
+    private let valColWidth: CGFloat = 68
+    private let unitColWidth: CGFloat = 30
+    private let sfColWidth: CGFloat = 38
+
+    // MARK: - Frozen resolutions
+
+    private var substrateRes: MeasurementResolution {
+        batch.frozenMeasurementResolution(for: batch.frozenSubstrateScaleResolution)
+    }
+    private var sugarRes: MeasurementResolution {
+        batch.frozenMeasurementResolution(for: batch.frozenSugarMixScaleResolution)
+    }
+    private var activationRes: MeasurementResolution {
+        batch.frozenMeasurementResolution(for: batch.frozenActivationScaleResolution)
+    }
+    private var transferRes: MeasurementResolution {
+        batch.frozenMeasurementResolution(for: batch.frozenTransferScaleResolution)
+    }
+    private var moldsRes: MeasurementResolution {
+        batch.frozenMeasurementResolution(for: batch.frozenMoldsScaleResolution)
+    }
+
+    // MARK: - Gelatin Mixture SF
+
+    private var sfExpGelatin: SigFigInfo? {
+        guard let gel = batch.hpGelatin else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return SigFigs.sfOfDifference(gel, resA: substrateRes, minus: tare, resB: substrateRes)
+    }
+
+    private var sfExpGelatinWater: SigFigInfo? {
+        guard let water = batch.hpGelatinWater, let gel = batch.hpGelatin else { return nil }
+        return SigFigs.sfOfDifference(water, resA: substrateRes, minus: gel, resB: substrateRes)
+    }
+
+    private var sfExpGelatinMixTotal: SigFigInfo? {
+        guard let g = sfExpGelatin, let w = sfExpGelatinWater else { return nil }
+        let resultDP = SigFigs.addSubtract(g, w)
+        let value = (batch.hpIndividualGelatin ?? 0) + (batch.hpIndividualGelatinWater ?? 0)
+        let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
+        return SigFigs.count(from: str)
+    }
+
+    // MARK: - Sugar Mixture SF
+
+    private var sfExpGranulated: SigFigInfo? {
+        guard let gran = batch.hpGranulated else { return nil }
+        let tare = batch.frozenSugarMixBeakerTare ?? 0
+        return SigFigs.sfOfDifference(gran, resA: sugarRes, minus: tare, resB: sugarRes)
+    }
+
+    private var sfExpGlucoseSyrup: SigFigInfo? {
+        guard let gluc = batch.hpGlucoseSyrup, let gran = batch.hpGranulated else { return nil }
+        return SigFigs.sfOfDifference(gluc, resA: sugarRes, minus: gran, resB: sugarRes)
+    }
+
+    private var sfExpSugarWater: SigFigInfo? {
+        guard let water = batch.hpSugarWater else { return nil }
+        let prev = batch.hpGlucoseSyrup ?? batch.hpGranulated
+        guard let p = prev else { return nil }
+        return SigFigs.sfOfDifference(water, resA: sugarRes, minus: p, resB: sugarRes)
+    }
+
+    private var sfExpSugarMixTotal: SigFigInfo? {
+        guard let g = sfExpGranulated, let gl = sfExpGlucoseSyrup, let w = sfExpSugarWater else { return nil }
+        let resultDP = SigFigs.addSubtract(g, gl, w)
+        let value = (batch.hpIndividualGranulated ?? 0)
+            + (batch.hpIndividualGlucoseSyrup ?? 0)
+            + (batch.hpIndividualSugarWater ?? 0)
+        let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
+        return SigFigs.count(from: str)
+    }
+
+    // MARK: - Activation Mixture SF
+
+    private var sfExpCitricAcid: SigFigInfo? {
+        guard let citric = batch.hpCitricAcid else { return nil }
+        let tare = batch.frozenActivationTrayTare ?? 0
+        return SigFigs.sfOfDifference(citric, resA: activationRes, minus: tare, resB: activationRes)
+    }
+
+    private var sfExpActivationWater: SigFigInfo? {
+        guard let water = batch.hpActivationWater, let citric = batch.hpCitricAcid else { return nil }
+        return SigFigs.sfOfDifference(water, resA: activationRes, minus: citric, resB: activationRes)
+    }
+
+    private var sfExpKSorbate: SigFigInfo? {
+        guard let k = batch.hpKSorbate, let water = batch.hpActivationWater else { return nil }
+        return SigFigs.sfOfDifference(k, resA: activationRes, minus: water, resB: activationRes)
+    }
+
+    private var sfExpFlavorOilsTerps: SigFigInfo? {
+        guard let flavor = batch.hpFlavorOilsTerpsActive, let k = batch.hpKSorbate else { return nil }
+        return SigFigs.sfOfDifference(flavor, resA: activationRes, minus: k, resB: activationRes)
+    }
+
+    private var sfExpActivationMixTotal: SigFigInfo? {
+        guard let c = sfExpCitricAcid, let w = sfExpActivationWater,
+              let k = sfExpKSorbate, let f = sfExpFlavorOilsTerps else { return nil }
+        let resultDP = SigFigs.addSubtract(c, w, k, f)
+        let v1: Double = batch.hpIndividualCitricAcid ?? 0
+        let v2: Double = batch.hpIndividualActivationWater ?? 0
+        let v3: Double = batch.hpIndividualKSorbate ?? 0
+        let v4: Double = batch.hpIndividualFlavorOilsTerpsActive ?? 0
+        let value = v1 + v2 + v3 + v4
+        let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
+        return SigFigs.count(from: str)
+    }
+
+    // MARK: - Mixture Densities SF
+
+    private var sfGelatinMixDensity: Int? {
+        guard let clean = batch.densitySyringeCleanGelatin,
+              let mass = batch.densitySyringePlusGelatinMass,
+              let vol = batch.densitySyringePlusGelatinVol,
+              vol > 0 else { return nil }
+        let massDiff = SigFigs.sfOfDifference(mass, resA: substrateRes, minus: clean, resB: substrateRes)
+        let volSF = SigFigs.count(from: String(format: "%.3f", vol))
+        return SigFigs.multiplyDivide(massDiff, volSF)
+    }
+
+    private var sfSugarMixDensity: Int? {
+        guard let clean = batch.densitySyringeCleanSugar,
+              let mass = batch.densitySyringePlusSugarMass,
+              let vol = batch.densitySyringePlusSugarVol,
+              vol > 0 else { return nil }
+        let massDiff = SigFigs.sfOfDifference(mass, resA: sugarRes, minus: clean, resB: sugarRes)
+        let volSF = SigFigs.count(from: String(format: "%.3f", vol))
+        return SigFigs.multiplyDivide(massDiff, volSF)
+    }
+
+    private var sfActivationMixDensity: Int? {
+        guard let clean = batch.densitySyringeCleanActive,
+              let mass = batch.densitySyringePlusActiveMass,
+              let vol = batch.densitySyringePlusActiveVol,
+              vol > 0 else { return nil }
+        let massDiff = SigFigs.sfOfDifference(mass, resA: activationRes, minus: clean, resB: activationRes)
+        let volSF = SigFigs.count(from: String(format: "%.3f", vol))
+        return SigFigs.multiplyDivide(massDiff, volSF)
+    }
+
+    private var sfFinalMixDensity: Int? {
+        guard let syringeMix = batch.weightSyringeWithMix,
+              let syringeClean = batch.weightSyringeEmpty,
+              let vol = batch.volumeSyringeGummyMix,
+              vol > 0 else { return nil }
+        let massDiff = SigFigs.sfOfDifference(
+            syringeMix, resA: transferRes,
+            minus: syringeClean, resB: transferRes
+        )
+        let volSF = SigFigs.count(from: String(format: "%.3f", vol))
+        return SigFigs.multiplyDivide(massDiff, volSF)
+    }
+
+    // MARK: - Losses SF
+
+    private var sfBeakerResidue: SigFigInfo? {
+        guard let residue = batch.weightBeakerResidue else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return SigFigs.sfOfDifference(residue, resA: substrateRes, minus: tare, resB: substrateRes)
+    }
+
+    private var sfActivationTrayResidue: SigFigInfo? {
+        guard let residue = batch.hpActivationTrayResidue else { return nil }
+        let tare = batch.frozenActivationTrayTare ?? 0
+        return SigFigs.sfOfDifference(residue, resA: activationRes, minus: tare, resB: activationRes)
+    }
+
+    private var sfSyringeResidue: SigFigInfo? {
+        guard let residue = batch.weightSyringeResidue else { return nil }
+        let tare = batch.frozenTransferSyringeTare ?? 0
+        return SigFigs.sfOfDifference(residue, resA: transferRes, minus: tare, resB: transferRes)
+    }
+
+    private var sfTrayResidue: SigFigInfo? {
+        guard let reading = batch.weightTrayPlusResidue else { return nil }
+        let tare = batch.frozenMoldsTrayTare ?? 0
+        return SigFigs.sfOfDifference(reading, resA: moldsRes, minus: tare, resB: moldsRes)
+    }
+
+    private var sfExtraGummyMix: SigFigInfo? {
+        guard let v = batch.extraGummyMixGrams else { return nil }
+        return SigFigs.quickCount(v)
+    }
+
+    private var sfTotalLoss: Int? {
+        let infos = [sfBeakerResidue, sfActivationTrayResidue, sfSyringeResidue, sfTrayResidue, sfExtraGummyMix].compactMap { $0 }
+        guard !infos.isEmpty else { return nil }
+        let minDP = infos.map { $0.decimalPlaces ?? 0 }.min()!
+        let beaker = calcBeakerResidue ?? 0
+        let actTray = calcActivationTrayResidue ?? 0
+        let syringe = calcSyringeResidue ?? 0
+        let tray = calcTrayResidue ?? 0
+        let extra = batch.extraGummyMixGrams ?? 0
+        let sum = beaker + actTray + syringe + tray + extra
+        let str = SigFigs.formatDP(sum, decimalPlaces: minDP)
+        return SigFigs.count(from: str).sigFigs
+    }
+
+    // Loss value helpers
+    private var calcBeakerResidue: Double? {
+        guard let residue = batch.weightBeakerResidue else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return residue - tare
+    }
+    private var calcActivationTrayResidue: Double? {
+        guard let residue = batch.hpActivationTrayResidue else { return nil }
+        let tare = batch.frozenActivationTrayTare ?? 0
+        return residue - tare
+    }
+    private var calcSyringeResidue: Double? {
+        guard let residue = batch.weightSyringeResidue else { return nil }
+        let tare = batch.frozenTransferSyringeTare ?? 0
+        return residue - tare
+    }
+    private var calcTrayResidue: Double? {
+        guard let reading = batch.weightTrayPlusResidue else { return nil }
+        let tare = batch.frozenMoldsTrayTare ?? 0
+        return reading - tare
+    }
+
+    // MARK: - Active Lost SF
+
+    private var sfGummyMixtureMass: SigFigInfo? {
+        guard let transfer = batch.hpSubstrateActivationTransfer else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return SigFigs.sfOfDifference(transfer, resA: transferRes, minus: tare, resB: transferRes)
+    }
+
+    private var sfTotalActive: SigFigInfo? {
+        SigFigs.quickCount(batch.activeConcentration)
+    }
+
+    private var sfActiveLost: Int? {
+        guard let activeSF = sfTotalActive?.sigFigs,
+              let lossSF = sfTotalLoss,
+              let mixSF = sfGummyMixtureMass?.sigFigs else { return nil }
+        return min(activeSF, lossSF, mixSF)
+    }
+
+    // MARK: - Gummy Properties SF
+
+    private var sfExpGummyMass: Int? {
+        guard let mixInfo = sfGummyMixtureMass,
+              let lossSF = sfTotalLoss,
+              let moldsFilled = batch.weightMoldsFilled else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        let massVal = batch.hpSubstrateActivationTransfer ?? 0
+        let netMass = massVal - tare
+
+        let beaker = calcBeakerResidue ?? 0
+        let actTray = calcActivationTrayResidue ?? 0
+        let syringe = calcSyringeResidue ?? 0
+        let trayRes = calcTrayResidue ?? 0
+        let extra = batch.extraGummyMixGrams ?? 0
+        let totalLoss = beaker + actTray + syringe + trayRes + extra
+
+        let diffDP = min(mixInfo.decimalPlaces ?? 0, lossSF > 0 ? 3 : 0)
+        let diff = netMass - totalLoss
+        let diffInfo = SigFigs.count(from: SigFigs.formatDP(diff, decimalPlaces: diffDP))
+
+        let moldsInfo = SigFigs.count(moldsFilled, resolution: moldsRes)
+        return SigFigs.multiplyDivide(diffInfo, moldsInfo)
+    }
+
+    private var sfExpGummyVolume: Int? {
+        guard let massSF = sfExpGummyMass,
+              let densitySF = sfFinalMixDensity else { return nil }
+        return min(massSF, densitySF)
+    }
+
+    private var sfExpGummyConcentration: Int? {
+        sfActiveLost
+    }
+
+    private var sfExpCitricAcidFraction: Int? {
+        guard let citricSF = sfExpCitricAcid?.sigFigs,
+              let mixSF = sfGummyMixtureMass?.sigFigs else { return nil }
+        return min(citricSF, mixSF)
+    }
+
+    private var sfExpKSorbateFraction: Int? {
+        guard let kSF = sfExpKSorbate?.sigFigs,
+              let mixSF = sfGummyMixtureMass?.sigFigs else { return nil }
+        return min(kSF, mixSF)
+    }
+
+    private var sfExpGelatinFraction: Int? {
+        guard let gelSF = sfExpGelatin?.sigFigs,
+              let mixSF = sfGummyMixtureMass?.sigFigs else { return nil }
+        return min(gelSF, mixSF)
+    }
+
+    // MARK: - Computed Values
+
+    private var valGelatinMixDensity: Double? { batch.calcGelatinMixDensity }
+    private var valSugarMixDensity: Double? { batch.calcSugarMixDensity }
+    private var valActivationMixDensity: Double? { batch.calcActiveMixDensity }
+    private var valFinalMixDensity: Double? { batch.calcDensityFinalMix }
+
+    private var valTotalLoss: Double? {
+        let vals = [calcBeakerResidue, calcActivationTrayResidue, calcSyringeResidue, calcTrayResidue, batch.extraGummyMixGrams]
+        let available = vals.compactMap { $0 }
+        guard !available.isEmpty else { return nil }
+        return available.reduce(0, +)
+    }
+
+    private var valGummyMixtureMass: Double? {
+        guard let transfer = batch.hpSubstrateActivationTransfer else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return transfer - tare
+    }
+
+    private var valTotalActive: Double {
+        batch.activeConcentration * Double(batch.wellCount)
+    }
+
+    private var valActiveLost: Double? {
+        guard let loss = valTotalLoss,
+              let mixMass = valGummyMixtureMass,
+              mixMass > 0 else { return nil }
+        return valTotalActive * (loss / mixMass)
+    }
+
+    private var valExpGummyMass: Double? {
+        guard let mixMass = valGummyMixtureMass,
+              let losses = valTotalLoss,
+              let molds = batch.weightMoldsFilled,
+              molds > 0 else { return nil }
+        return (mixMass - losses) / molds
+    }
+
+    private var valExpGummyVolume: Double? {
+        guard let mass = valExpGummyMass,
+              let density = valFinalMixDensity,
+              density > 0 else { return nil }
+        return mass / density
+    }
+
+    private var valExpGummyConcentration: Double? {
+        guard let lost = valActiveLost,
+              let moldsFilled = batch.weightMoldsFilled,
+              moldsFilled > 0 else { return nil }
+        return (valTotalActive - lost) / moldsFilled
+    }
+
+    private var valExpCitricAcidFraction: Double? {
+        guard let citric = batch.hpIndividualCitricAcid,
+              let mixMass = valGummyMixtureMass,
+              mixMass > 0 else { return nil }
+        return (citric / mixMass) * 100.0
+    }
+
+    private var valExpKSorbateFraction: Double? {
+        guard let ksorbate = batch.hpIndividualKSorbate,
+              let mixMass = valGummyMixtureMass,
+              mixMass > 0 else { return nil }
+        return (ksorbate / mixMass) * 100.0
+    }
+
+    private var valExpGelatinFraction: Double? {
+        guard let gelatin = batch.hpIndividualGelatin,
+              let mixMass = valGummyMixtureMass,
+              mixMass > 0 else { return nil }
+        return (gelatin / mixMass) * 100.0
+    }
+
+    // MARK: - Body
+
+    var body: some View {
+        VStack(spacing: 0) {
+            CMCollapsibleHeader(
+                title: "Significant Figures",
+                isExpanded: $isExpanded,
+                accentColor: systemConfig.designTitle,
+                copyAction: { BatchDetailCopyUtility.copyJSON([:], label: "Significant Figures", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+            )
+
+            if isExpanded {
+                ThemedDivider()
+
+                Text("Significant figures for each experimental computation.")
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(CMTheme.textTertiary)
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 4)
+
+                // MARK: Gelatin Mixture
+                sfSubheader("Gelatin Mixture")
+                sfRow("Gelatin", info: sfExpGelatin, unit: "g")
+                sfRow("Water", info: sfExpGelatinWater, unit: "g")
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                sfRow("Gelatin Mix Total", info: sfExpGelatinMixTotal, unit: "g", bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Sugar Mixture
+                sfSubheader("Sugar Mixture")
+                sfRow("Granulated Sugar", info: sfExpGranulated, unit: "g")
+                sfRow("Glucose Syrup", info: sfExpGlucoseSyrup, unit: "g")
+                sfRow("Water", info: sfExpSugarWater, unit: "g")
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                sfRow("Sugar Mix Total", info: sfExpSugarMixTotal, unit: "g", bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Activation Mixture
+                sfSubheader("Activation Mixture")
+                sfRow("Citric Acid", info: sfExpCitricAcid, unit: "g")
+                sfRow("Activation Water", info: sfExpActivationWater, unit: "g")
+                sfRow("K Sorbate", info: sfExpKSorbate, unit: "g")
+                sfRow("Oils/Terps/Active", info: sfExpFlavorOilsTerps, unit: "g")
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                sfRow("Activation Mix Total", info: sfExpActivationMixTotal, unit: "g", bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Mixture Densities
+                sfSubheader("Mixture Densities")
+                sfRowFromInt("Gelatin Mix", value: valGelatinMixDensity, sf: sfGelatinMixDensity, unit: "g/mL")
+                sfRowFromInt("Sugar Mix", value: valSugarMixDensity, sf: sfSugarMixDensity, unit: "g/mL")
+                sfRowFromInt("Activation Mix", value: valActivationMixDensity, sf: sfActivationMixDensity, unit: "g/mL")
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                sfRowFromInt("Gummy Mixture", value: valFinalMixDensity, sf: sfFinalMixDensity, unit: "g/mL", bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Losses
+                sfSubheader("Losses")
+                sfRow("Beaker Residue", info: sfBeakerResidue, unit: "g")
+                sfRow("Activ. Tray Residue", info: sfActivationTrayResidue, unit: "g")
+                sfRow("Syringe Residue", info: sfSyringeResidue, unit: "g")
+                sfRow("Tray Residue", info: sfTrayResidue, unit: "g")
+                sfRow("Extra Gummy Mix", info: sfExtraGummyMix, unit: "g")
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                sfRowFromInt("Total Losses", value: valTotalLoss, sf: sfTotalLoss, unit: "g", bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Active Lost
+                sfSubheader("Active Lost")
+                sfRow("Gummy Mixture Mass", info: sfGummyMixtureMass, unit: "g")
+                sfRow("Total Active", info: sfTotalActive, unit: batch.activeUnit)
+                sfRowFromInt("Total Losses", value: valTotalLoss, sf: sfTotalLoss, unit: "g")
+                ThemedDivider(indent: 20).padding(.vertical, 4)
+                sfRowFromInt("Active Lost", value: valActiveLost, sf: sfActiveLost, unit: batch.activeUnit, bold: true)
+                    .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Gummies
+                sfSubheader("Gummies")
+                sfRowFromInt("Volume", value: valExpGummyVolume, sf: sfExpGummyVolume, unit: "mL")
+                sfRowFromInt("Mass", value: valExpGummyMass, sf: sfExpGummyMass, unit: "g")
+                sfRowFromInt("Concentration", value: valExpGummyConcentration, sf: sfExpGummyConcentration, unit: batch.activeUnit)
+                sfRowFromInt("Citric Acid", value: valExpCitricAcidFraction, sf: sfExpCitricAcidFraction, unit: "%")
+                sfRowFromInt("K Sorbate", value: valExpKSorbateFraction, sf: sfExpKSorbateFraction, unit: "%")
+                sfRowFromInt("Gelatin", value: valExpGelatinFraction, sf: sfExpGelatinFraction, unit: "%")
+
+                if !hasAnyData {
+                    Text("Record high-precision weight measurements to populate sig fig analysis.")
+                        .cmFootnote()
+                        .padding(.horizontal, 16).padding(.top, 8)
+                }
+
+                Spacer().frame(height: 12)
+            }
+        }
+    }
+
+    private var hasAnyData: Bool {
+        sfExpGelatin != nil || sfExpGranulated != nil || sfExpCitricAcid != nil
+        || sfGelatinMixDensity != nil || sfSugarMixDensity != nil
+        || sfActivationMixDensity != nil || sfFinalMixDensity != nil
+    }
+
+    // MARK: - Sub-views
+
+    private func sfSubheader(_ title: String) -> some View {
+        HStack {
+            Text(title).cmSubsectionTitle()
+            Spacer()
+            Text("value")
+                .cmFinePrint()
+                .frame(width: valColWidth + unitColWidth, alignment: .trailing)
+            Text("SF")
+                .cmFinePrint()
+                .frame(width: sfColWidth, alignment: .trailing)
+        }
+        .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+    }
+
+    private func sfRow(
+        _ label: String,
+        info: SigFigInfo?,
+        unit: String,
+        bold: Bool = false
+    ) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Spacer()
+            Group {
+                if let info = info {
+                    Text(SigFigs.format(info.value, sigFigs: info.sigFigs))
+                        .foregroundStyle(CMTheme.textPrimary)
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: valColWidth, alignment: .trailing)
+            Text(unit)
+                .cmMono12()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: unitColWidth, alignment: .leading)
+            Group {
+                if let info = info {
+                    Text("\(info.sigFigs)")
+                        .foregroundStyle(sfColor(info.sigFigs))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: sfColWidth, alignment: .trailing)
+        }
+        .cmDataRowPadding()
+    }
+
+    private func sfRowFromInt(
+        _ label: String,
+        value: Double? = nil,
+        sf: Int?,
+        unit: String,
+        bold: Bool = false
+    ) -> some View {
+        HStack(spacing: 4) {
+            Text(label)
+                .cmMono12()
+                .fontWeight(bold ? .bold : .regular)
+                .foregroundStyle(CMTheme.textPrimary)
+                .lineLimit(1).minimumScaleFactor(0.7)
+            Spacer()
+            Group {
+                if let sf = sf, let value = value {
+                    Text(SigFigs.format(value, sigFigs: sf))
+                        .foregroundStyle(CMTheme.textPrimary)
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: valColWidth, alignment: .trailing)
+            Text(unit)
+                .cmMono12()
+                .foregroundStyle(CMTheme.textTertiary)
+                .frame(width: unitColWidth, alignment: .leading)
+            Group {
+                if let sf = sf {
+                    Text("\(sf)")
+                        .foregroundStyle(sfColor(sf))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .fontWeight(bold ? .bold : .regular)
+            .frame(width: sfColWidth, alignment: .trailing)
+        }
+        .cmDataRowPadding()
+    }
+
+    private func sfColor(_ sf: Int) -> Color {
+        if sf >= 4 {
+            return CMTheme.success
+        } else if sf == 3 {
+            return systemConfig.designSecondaryAccent
+        } else {
+            return systemConfig.designAlert
+        }
     }
 }
 
@@ -1232,7 +2204,7 @@ struct BatchDryWeightSection: View {
     private var containerLabels: [String] { systemConfig.containers.map(\.id) }
 
     @State private var isExpanded = true
-    @State private var selectedContainerLabel: String = SystemConfig.beakerContainers.first?.id ?? "Beaker 5ml"
+    @State private var selectedContainerLabel: String = SystemConfig.beakerContainers.first?.id ?? "Beaker 5ml A"
     @State private var newDryMass: String = ""
     @State private var tareWeightText: String = ""
     @State private var showTareHistory = false

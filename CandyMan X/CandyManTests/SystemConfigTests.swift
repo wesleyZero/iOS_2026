@@ -187,14 +187,14 @@ struct SystemConfigTests {
         let config = TestFixtures.makeDefaultSystemConfig()
         let beaker = config.recommendedBeaker(forVolumeML: 3.0)
         #expect(beaker != nil)
-        #expect(beaker!.name == "Beaker 5ml")
+        #expect(beaker!.name == "Beaker 5ml A")
     }
 
     @Test func recommendedBeakerForMediumVolume() {
         let config = TestFixtures.makeDefaultSystemConfig()
         let beaker = config.recommendedBeaker(forVolumeML: 120.0)
         #expect(beaker != nil)
-        #expect(beaker!.name == "Beaker 150ml")
+        #expect(beaker!.name == "Beaker 150ml A")
     }
 
     // MARK: - Container Tare
@@ -202,15 +202,15 @@ struct SystemConfigTests {
     @Test func containerTareOverrides() {
         let config = TestFixtures.makeDefaultSystemConfig()
 
-        let original = config.containerTare(for: "Beaker 50ml")
-        #expect(original == 29.312)
+        let original = config.containerTare(for: "Beaker 50ml A")
+        #expect(original == 29.32)
 
-        config.setContainerTare(30.0, for: "Beaker 50ml")
-        #expect(config.containerTare(for: "Beaker 50ml") == 30.0)
-        #expect(config.containerTareIsOverridden(for: "Beaker 50ml") == true)
+        config.setContainerTare(30.0, for: "Beaker 50ml A")
+        #expect(config.containerTare(for: "Beaker 50ml A") == 30.0)
+        #expect(config.containerTareIsOverridden(for: "Beaker 50ml A") == true)
 
-        config.resetContainerTare(for: "Beaker 50ml")
-        #expect(config.containerTare(for: "Beaker 50ml") == 29.312)
+        config.resetContainerTare(for: "Beaker 50ml A")
+        #expect(config.containerTare(for: "Beaker 50ml A") == 29.32)
     }
 
     // MARK: - Density Override Detection

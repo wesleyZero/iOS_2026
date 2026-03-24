@@ -457,10 +457,17 @@ struct BatchOutputView: View {
             CMHaptic.heavy()
             withAnimation(.cmSpring) {
                 viewModel.batchActivated = true
-                showEspadaToast = true
+                if sizeClass == .regular {
+                    viewModel.showEspadaToast = true
+                } else {
+                    showEspadaToast = true
+                }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-                withAnimation(.easeOut(duration: 0.4)) { showEspadaToast = false }
+                withAnimation(.easeOut(duration: 0.4)) {
+                    showEspadaToast = false
+                    viewModel.showEspadaToast = false
+                }
             }
         } label: {
             Label("Activate Batch", systemImage: "bolt.fill")

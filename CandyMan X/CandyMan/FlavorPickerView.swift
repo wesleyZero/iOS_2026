@@ -39,7 +39,7 @@ struct FlavorOilPickerView: View {
     private var oilsChanged: Bool {
         !selectedOils.isEmpty
         || viewModel.oilsLocked
-        || viewModel.flavorOilVolumePercent != 0.451
+        || viewModel.flavorOilVolumePercent != 0.481
     }
 
     var body: some View {
@@ -54,7 +54,7 @@ struct FlavorOilPickerView: View {
                         CMHaptic.light()
                         withAnimation(.cmSpring) {
                             for key in selectedOils { viewModel.selectedFlavors.removeValue(forKey: key) }
-                            viewModel.flavorOilVolumePercent = 0.451
+                            viewModel.flavorOilVolumePercent = 0.481
                             viewModel.oilsLocked = false
                             if viewModel.selectedFlavors.isEmpty {
                                 viewModel.flavorCompositionLocked = false
@@ -263,7 +263,7 @@ struct TerpenePickerView: View {
     private var terpenesChanged: Bool {
         !selectedTerpenes.isEmpty
         || viewModel.terpenesLocked
-        || viewModel.terpeneVolumePPM != 199.0
+        || viewModel.terpeneVolumePPM != 219.9
     }
 
     var body: some View {
@@ -278,7 +278,7 @@ struct TerpenePickerView: View {
                         CMHaptic.light()
                         withAnimation(.cmSpring) {
                             for key in selectedTerpenes { viewModel.selectedFlavors.removeValue(forKey: key) }
-                            viewModel.terpeneVolumePPM = 199.0
+                            viewModel.terpeneVolumePPM = 219.9
                             viewModel.terpenesLocked = false
                             if viewModel.selectedFlavors.isEmpty {
                                 viewModel.flavorCompositionLocked = false

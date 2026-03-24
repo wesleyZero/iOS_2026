@@ -128,6 +128,28 @@ class AdditionalMeasurementEntry {
     }
 }
 
+@Model
+class SavedCorrectionEntry {
+    var label: String
+    var initialMass: Double?
+    var finalMass: Double?
+    var section: String   // "gelatin", "sugar", "activation"
+
+    var batch: SavedBatch?
+
+    var difference: Double? {
+        guard let f = finalMass, let i = initialMass else { return nil }
+        return f - i
+    }
+
+    init(label: String, initialMass: Double? = nil, finalMass: Double? = nil, section: String) {
+        self.label = label
+        self.initialMass = initialMass
+        self.finalMass = finalMass
+        self.section = section
+    }
+}
+
 // MARK: - Parent Model
 
 @Model
@@ -192,6 +214,58 @@ class SavedBatch {
     var hpTransferScaleID: String?
     var hpMoldsTrayID: String?
     var hpMoldsScaleID: String?
+
+    // HP cumulative scale readings — Gelatin Mix
+    var hpGelatin: Double?
+    var hpGelatinWater: Double?
+
+    // HP cumulative scale readings — Sugar Mix
+    var hpGranulated: Double?
+    var hpGlucoseSyrup: Double?
+    var hpSugarWater: Double?
+
+    // HP cumulative scale readings — Activation Mix
+    var hpCitricAcid: Double?
+    var hpActivationWater: Double?
+    var hpKSorbate: Double?
+    var hpFlavorOilsTerpsActive: Double?
+    var hpActivationTrayResidue: Double?
+
+    // HP equipment IDs
+    var hpSubstrateBeakerID: String?
+    var hpSugarMixBeakerID: String?
+    var hpActivationTrayID: String?
+    var hpSubstrateStirBarID: String?
+    var hpSugarMixStirBarID: String?
+    var hpSubstrateScaleID: String?
+    var hpSugarMixScaleID: String?
+    var hpActivationScaleID: String?
+
+    // HP transfer readings
+    var hpSubstrateSugarTransfer: Double?
+    var hpSubstrateActivationTransfer: Double?
+
+    // Frozen tare weights (snapshot at save time)
+    var frozenSubstrateBeakerTare: Double?
+    var frozenSugarMixBeakerTare: Double?
+    var frozenActivationTrayTare: Double?
+    var frozenTransferSyringeTare: Double?
+    var frozenMoldsTrayTare: Double?
+
+    // Frozen scale resolutions (snapshot at save time)
+    var frozenSubstrateScaleResolution: Double?
+    var frozenSugarMixScaleResolution: Double?
+    var frozenActivationScaleResolution: Double?
+    var frozenTransferScaleResolution: Double?
+    var frozenMoldsScaleResolution: Double?
+
+    // Flags
+    var highPrecisionMode: Bool = true
+    var sugarMixtureOveragePercent: Double = 0
+
+    // Corrections
+    @Relationship(deleteRule: .cascade, inverse: \SavedCorrectionEntry.batch)
+    var savedCorrections: [SavedCorrectionEntry] = []
 
     // The "initial" wet gummy mass used for dehydration % calculations.
     var wetGummyMassGrams: Double?
@@ -416,6 +490,13 @@ struct AdditionalMeasurementDTO: Codable {
     var finalMass: Double?
 }
 
+struct CorrectionEntryDTO: Codable {
+    var label: String
+    var initialMass: Double?
+    var finalMass: Double?
+    var section: String
+}
+
 struct SavedBatchDTO: Codable {
     var name: String
     var batchID: String
@@ -504,6 +585,53 @@ struct SavedBatchDTO: Codable {
     var additionalMeasurements: [AdditionalMeasurementDTO]?
     // Legacy field for backward compatibility with old exports
     var dryWeightReadings: [DryWeightDTO]?
+
+    // HP cumulative readings
+    var hpGelatin: Double?
+    var hpGelatinWater: Double?
+    var hpGranulated: Double?
+    var hpGlucoseSyrup: Double?
+    var hpSugarWater: Double?
+    var hpCitricAcid: Double?
+    var hpActivationWater: Double?
+    var hpKSorbate: Double?
+    var hpFlavorOilsTerpsActive: Double?
+    var hpActivationTrayResidue: Double?
+
+    // HP equipment IDs
+    var hpSubstrateBeakerID: String?
+    var hpSugarMixBeakerID: String?
+    var hpActivationTrayID: String?
+    var hpSubstrateStirBarID: String?
+    var hpSugarMixStirBarID: String?
+    var hpSubstrateScaleID: String?
+    var hpSugarMixScaleID: String?
+    var hpActivationScaleID: String?
+
+    // HP transfer readings
+    var hpSubstrateSugarTransfer: Double?
+    var hpSubstrateActivationTransfer: Double?
+
+    // Frozen tare weights
+    var frozenSubstrateBeakerTare: Double?
+    var frozenSugarMixBeakerTare: Double?
+    var frozenActivationTrayTare: Double?
+    var frozenTransferSyringeTare: Double?
+    var frozenMoldsTrayTare: Double?
+
+    // Frozen scale resolutions
+    var frozenSubstrateScaleResolution: Double?
+    var frozenSugarMixScaleResolution: Double?
+    var frozenActivationScaleResolution: Double?
+    var frozenTransferScaleResolution: Double?
+    var frozenMoldsScaleResolution: Double?
+
+    // Flags
+    var highPrecisionMode: Bool?
+    var sugarMixtureOveragePercent: Double?
+
+    // Corrections
+    var savedCorrections: [CorrectionEntryDTO]?
 }
 
 // MARK: - DTO Conversion Helpers
@@ -548,6 +676,12 @@ extension DehydrationContainer {
 extension AdditionalMeasurementEntry {
     func toDTO() -> AdditionalMeasurementDTO {
         AdditionalMeasurementDTO(label: label, initialMass: initialMass, finalMass: finalMass)
+    }
+}
+
+extension SavedCorrectionEntry {
+    func toDTO() -> CorrectionEntryDTO {
+        CorrectionEntryDTO(label: label, initialMass: initialMass, finalMass: finalMass, section: section)
     }
 }
 
@@ -623,7 +757,32 @@ extension SavedBatch {
             colors: colors.map { $0.toDTO() },
             dehydrationContainers: dehydrationContainers.sorted { $0.label < $1.label }.map { $0.toDTO() },
             additionalMeasurements: additionalMeasurementEntries.map { $0.toDTO() },
-            dryWeightReadings: nil
+            dryWeightReadings: nil,
+            hpGelatin: hpGelatin, hpGelatinWater: hpGelatinWater,
+            hpGranulated: hpGranulated, hpGlucoseSyrup: hpGlucoseSyrup, hpSugarWater: hpSugarWater,
+            hpCitricAcid: hpCitricAcid, hpActivationWater: hpActivationWater,
+            hpKSorbate: hpKSorbate, hpFlavorOilsTerpsActive: hpFlavorOilsTerpsActive,
+            hpActivationTrayResidue: hpActivationTrayResidue,
+            hpSubstrateBeakerID: hpSubstrateBeakerID, hpSugarMixBeakerID: hpSugarMixBeakerID,
+            hpActivationTrayID: hpActivationTrayID,
+            hpSubstrateStirBarID: hpSubstrateStirBarID, hpSugarMixStirBarID: hpSugarMixStirBarID,
+            hpSubstrateScaleID: hpSubstrateScaleID, hpSugarMixScaleID: hpSugarMixScaleID,
+            hpActivationScaleID: hpActivationScaleID,
+            hpSubstrateSugarTransfer: hpSubstrateSugarTransfer,
+            hpSubstrateActivationTransfer: hpSubstrateActivationTransfer,
+            frozenSubstrateBeakerTare: frozenSubstrateBeakerTare,
+            frozenSugarMixBeakerTare: frozenSugarMixBeakerTare,
+            frozenActivationTrayTare: frozenActivationTrayTare,
+            frozenTransferSyringeTare: frozenTransferSyringeTare,
+            frozenMoldsTrayTare: frozenMoldsTrayTare,
+            frozenSubstrateScaleResolution: frozenSubstrateScaleResolution,
+            frozenSugarMixScaleResolution: frozenSugarMixScaleResolution,
+            frozenActivationScaleResolution: frozenActivationScaleResolution,
+            frozenTransferScaleResolution: frozenTransferScaleResolution,
+            frozenMoldsScaleResolution: frozenMoldsScaleResolution,
+            highPrecisionMode: highPrecisionMode,
+            sugarMixtureOveragePercent: sugarMixtureOveragePercent,
+            savedCorrections: savedCorrections.map { $0.toDTO() }
         )
     }
 
@@ -734,7 +893,146 @@ extension SavedBatch {
                 AdditionalMeasurementEntry(label: $0.label, initialMass: $0.initialMass, finalMass: $0.finalMass)
             }
         }
+
+        // HP cumulative readings
+        batch.hpGelatin = dto.hpGelatin
+        batch.hpGelatinWater = dto.hpGelatinWater
+        batch.hpGranulated = dto.hpGranulated
+        batch.hpGlucoseSyrup = dto.hpGlucoseSyrup
+        batch.hpSugarWater = dto.hpSugarWater
+        batch.hpCitricAcid = dto.hpCitricAcid
+        batch.hpActivationWater = dto.hpActivationWater
+        batch.hpKSorbate = dto.hpKSorbate
+        batch.hpFlavorOilsTerpsActive = dto.hpFlavorOilsTerpsActive
+        batch.hpActivationTrayResidue = dto.hpActivationTrayResidue
+
+        // HP equipment IDs
+        batch.hpSubstrateBeakerID = dto.hpSubstrateBeakerID
+        batch.hpSugarMixBeakerID = dto.hpSugarMixBeakerID
+        batch.hpActivationTrayID = dto.hpActivationTrayID
+        batch.hpSubstrateStirBarID = dto.hpSubstrateStirBarID
+        batch.hpSugarMixStirBarID = dto.hpSugarMixStirBarID
+        batch.hpSubstrateScaleID = dto.hpSubstrateScaleID
+        batch.hpSugarMixScaleID = dto.hpSugarMixScaleID
+        batch.hpActivationScaleID = dto.hpActivationScaleID
+
+        // HP transfer readings
+        batch.hpSubstrateSugarTransfer = dto.hpSubstrateSugarTransfer
+        batch.hpSubstrateActivationTransfer = dto.hpSubstrateActivationTransfer
+
+        // Frozen tare weights & scale resolutions
+        batch.frozenSubstrateBeakerTare = dto.frozenSubstrateBeakerTare
+        batch.frozenSugarMixBeakerTare = dto.frozenSugarMixBeakerTare
+        batch.frozenActivationTrayTare = dto.frozenActivationTrayTare
+        batch.frozenTransferSyringeTare = dto.frozenTransferSyringeTare
+        batch.frozenMoldsTrayTare = dto.frozenMoldsTrayTare
+        batch.frozenSubstrateScaleResolution = dto.frozenSubstrateScaleResolution
+        batch.frozenSugarMixScaleResolution = dto.frozenSugarMixScaleResolution
+        batch.frozenActivationScaleResolution = dto.frozenActivationScaleResolution
+        batch.frozenTransferScaleResolution = dto.frozenTransferScaleResolution
+        batch.frozenMoldsScaleResolution = dto.frozenMoldsScaleResolution
+
+        // Flags
+        batch.highPrecisionMode = dto.highPrecisionMode ?? true
+        batch.sugarMixtureOveragePercent = dto.sugarMixtureOveragePercent ?? 0
+
+        // Corrections
+        if let corrections = dto.savedCorrections {
+            batch.savedCorrections = corrections.map {
+                SavedCorrectionEntry(label: $0.label, initialMass: $0.initialMass, finalMass: $0.finalMass, section: $0.section)
+            }
+        }
+
         context.insert(batch)
+    }
+}
+
+// MARK: - HP Computed Individual Masses (from frozen tares + cumulative readings)
+
+extension SavedBatch {
+
+    // --- Gelatin Mix ---
+    var hpIndividualGelatin: Double? {
+        guard let gel = hpGelatin, let tare = frozenSubstrateBeakerTare else { return nil }
+        return gel - tare
+    }
+    var hpIndividualGelatinWater: Double? {
+        guard let water = hpGelatinWater, let gel = hpGelatin else { return nil }
+        return water - gel
+    }
+    var hpGelatinMixtureTotal: Double? {
+        guard let last = hpGelatinWater, let tare = frozenSubstrateBeakerTare else { return nil }
+        return last - tare
+    }
+
+    // --- Sugar Mix ---
+    var hpIndividualGranulated: Double? {
+        guard let gran = hpGranulated, let tare = frozenSugarMixBeakerTare else { return nil }
+        return gran - tare
+    }
+    var hpIndividualGlucoseSyrup: Double? {
+        guard let gluc = hpGlucoseSyrup, let gran = hpGranulated else { return nil }
+        return gluc - gran
+    }
+    var hpIndividualSugarWater: Double? {
+        guard let water = hpSugarWater else { return nil }
+        let prev = hpGlucoseSyrup ?? hpGranulated
+        guard let p = prev else { return nil }
+        return water - p
+    }
+    var hpSugarMixtureTotal: Double? {
+        guard let last = hpSugarWater, let tare = frozenSugarMixBeakerTare else { return nil }
+        return last - tare
+    }
+
+    // --- Activation Mix ---
+    var hpIndividualCitricAcid: Double? {
+        guard let citric = hpCitricAcid, let tare = frozenActivationTrayTare else { return nil }
+        return citric - tare
+    }
+    var hpIndividualActivationWater: Double? {
+        guard let water = hpActivationWater, let citric = hpCitricAcid else { return nil }
+        return water - citric
+    }
+    var hpIndividualKSorbate: Double? {
+        guard let k = hpKSorbate, let water = hpActivationWater else { return nil }
+        return k - water
+    }
+    var hpIndividualFlavorOilsTerpsActive: Double? {
+        guard let flavor = hpFlavorOilsTerpsActive, let k = hpKSorbate else { return nil }
+        return flavor - k
+    }
+    var hpActivationMixtureTotal: Double? {
+        guard let last = hpFlavorOilsTerpsActive, let tare = frozenActivationTrayTare else { return nil }
+        let residue = hpActivationTrayResidue ?? 0
+        return (last - tare) - residue
+    }
+
+    // --- Grand Total ---
+    var hpGrandTotal: Double? {
+        if let activationTransfer = hpSubstrateActivationTransfer {
+            return activationTransfer
+        }
+        guard let transfer = hpSubstrateSugarTransfer,
+              let activation = hpActivationMixtureTotal else { return nil }
+        return transfer + activation
+    }
+
+    // --- Correction Totals ---
+    func correctionTotal(for section: String) -> Double? {
+        let entries = savedCorrections.filter { $0.section == section }
+        let diffs = entries.compactMap { $0.difference }
+        guard !diffs.isEmpty else { return nil }
+        return diffs.reduce(0, +)
+    }
+
+    // --- MeasurementResolution from frozen scale resolution ---
+    func frozenMeasurementResolution(for scaleResolution: Double?) -> MeasurementResolution {
+        guard let r = scaleResolution else { return .thousandthGram }
+        if r >= 1.0 { return .oneGram }
+        if r >= 0.1 { return .tenthGram }
+        if r >= 0.01 { return .hundredthGram }
+        return .thousandthGram
     }
 }
 
@@ -809,6 +1107,50 @@ extension BatchConfigViewModel {
         batch.lsdUgPerTab = lsdUgPerTab
         batch.lsdTransferWaterML = systemConfig.lsdTransferWaterML
 
+        // HP cumulative scale readings
+        batch.hpGelatin = hpGelatin
+        batch.hpGelatinWater = hpGelatinWater
+        batch.hpGranulated = hpGranulated
+        batch.hpGlucoseSyrup = hpGlucoseSyrup
+        batch.hpSugarWater = hpSugarWater
+        batch.hpCitricAcid = hpCitricAcid
+        batch.hpActivationWater = hpActivationWater
+        batch.hpKSorbate = hpKSorbate
+        batch.hpFlavorOilsTerpsActive = hpFlavorOilsTerpsActive
+        batch.hpActivationTrayResidue = hpActivationTrayResidue
+
+        // HP equipment IDs
+        batch.hpSubstrateBeakerID = hpSubstrateBeakerID
+        batch.hpSugarMixBeakerID = hpSugarMixBeakerID
+        batch.hpActivationTrayID = hpActivationTrayID
+        batch.hpSubstrateStirBarID = hpSubstrateStirBarID
+        batch.hpSugarMixStirBarID = hpSugarMixStirBarID
+        batch.hpSubstrateScaleID = hpSubstrateScaleID
+        batch.hpSugarMixScaleID = hpSugarMixScaleID
+        batch.hpActivationScaleID = hpActivationScaleID
+
+        // HP transfer readings
+        batch.hpSubstrateSugarTransfer = hpSubstrateSugarTransfer
+        batch.hpSubstrateActivationTransfer = hpSubstrateActivationTransfer
+
+        // Frozen tare weights (snapshot from SystemConfig at save time)
+        batch.frozenSubstrateBeakerTare = hpSubstrateBeakerID.map { systemConfig.containerTare(for: $0) }
+        batch.frozenSugarMixBeakerTare = hpSugarMixBeakerID.map { systemConfig.containerTare(for: $0) }
+        batch.frozenActivationTrayTare = hpActivationTrayID.map { systemConfig.containerTare(for: $0) }
+        batch.frozenTransferSyringeTare = hpTransferSyringeID.map { systemConfig.syringeTare(for: $0) }
+        batch.frozenMoldsTrayTare = hpMoldsTrayID.map { systemConfig.containerTare(for: $0) }
+
+        // Frozen scale resolutions (snapshot from SystemConfig at save time)
+        batch.frozenSubstrateScaleResolution = hpSubstrateScaleID.flatMap { id in systemConfig.scales.first { $0.id == id }?.resolution }
+        batch.frozenSugarMixScaleResolution = hpSugarMixScaleID.flatMap { id in systemConfig.scales.first { $0.id == id }?.resolution }
+        batch.frozenActivationScaleResolution = hpActivationScaleID.flatMap { id in systemConfig.scales.first { $0.id == id }?.resolution }
+        batch.frozenTransferScaleResolution = hpTransferScaleID.flatMap { id in systemConfig.scales.first { $0.id == id }?.resolution }
+        batch.frozenMoldsScaleResolution = hpMoldsScaleID.flatMap { id in systemConfig.scales.first { $0.id == id }?.resolution }
+
+        // Flags
+        batch.highPrecisionMode = highPrecisionMode
+        batch.sugarMixtureOveragePercent = systemConfig.sugarMixtureOveragePercent
+
         // Create child components
         var sortOrder = 0
         for c in result.activationMix.components {
@@ -863,6 +1205,23 @@ extension BatchConfigViewModel {
                     AdditionalMeasurementEntry(label: m.label, initialMass: m.initialMass, finalMass: m.finalMass)
                 )
             }
+        }
+
+        // Create correction entries
+        for c in corrections where c.initialMass != nil || c.finalMass != nil {
+            batch.savedCorrections.append(
+                SavedCorrectionEntry(label: c.label, initialMass: c.initialMass, finalMass: c.finalMass, section: "gelatin")
+            )
+        }
+        for c in sugarCorrections where c.initialMass != nil || c.finalMass != nil {
+            batch.savedCorrections.append(
+                SavedCorrectionEntry(label: c.label, initialMass: c.initialMass, finalMass: c.finalMass, section: "sugar")
+            )
+        }
+        for c in activationCorrections where c.initialMass != nil || c.finalMass != nil {
+            batch.savedCorrections.append(
+                SavedCorrectionEntry(label: c.label, initialMass: c.initialMass, finalMass: c.finalMass, section: "activation")
+            )
         }
 
         return batch

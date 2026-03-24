@@ -52,6 +52,7 @@ struct CandyManApp: App {
             TemplateFlavor.self,
             TemplateColor.self,
             AdditionalMeasurementEntry.self,
+            SavedCorrectionEntry.self,
             BatchRequest.self,
         ])
         let config = ModelConfiguration(schema: schema)

@@ -33,7 +33,7 @@ final class BatchConfigViewModel {
         }
     }
     var units: ConcentrationUnit = .ug
-    var gelatinPercentage: Double = 5.225
+    var gelatinPercentage: Double = 5.430
 
     /// Total gummy count: full trays + extra individual gummies.
     func totalGummies(using systemConfig: SystemConfig) -> Int {
@@ -50,6 +50,7 @@ final class BatchConfigViewModel {
 
     var batchCalculated: Bool = false
     var batchActivated: Bool = false
+    var showEspadaToast: Bool = false
 
     // MARK: - Template Tracking
 
@@ -131,6 +132,7 @@ final class BatchConfigViewModel {
         clearTemplate(systemConfig: systemConfig)
         batchCalculated = false
         batchActivated = false
+        showEspadaToast = false
         clearMeasurements()
     }
 
@@ -803,8 +805,8 @@ final class BatchConfigViewModel {
     }
 
     var waterRatioGelatinToSugar: Double = 75.0 / 65.0
-    var terpeneVolumePPM: Double = 199.0
-    var flavorOilVolumePercent: Double = 0.451
+    var terpeneVolumePPM: Double = 219.9
+    var flavorOilVolumePercent: Double = 0.481
 
     /// Filtered view of only the oil-type selections.
     var selectedOils: [FlavorSelection] {
@@ -886,7 +888,7 @@ final class BatchConfigViewModel {
     /// Map of selected colors → blend percentages (0–100).
     var selectedColors: [GummyColor: Double] = [:]
     var colorsLocked: Bool = false
-    var colorVolumePercent: Double = 0.664
+    var colorVolumePercent: Double = 0.581
     var colorCompositionLocked: Bool = false
 
     func toggleColor(_ color: GummyColor) {
@@ -1035,7 +1037,7 @@ final class BatchConfigViewModel {
         activeConcentration     = 10.0
         selectedActive          = .lsd
         units                   = .ug
-        gelatinPercentage       = 5.225
+        gelatinPercentage       = 5.430
         lsdUgPerTab             = systemConfig?.defaultLsdUgPerTab ?? 117.0
         additionalActiveWaterML = 0.0
         overageFactor           = 1.03
@@ -1047,13 +1049,13 @@ final class BatchConfigViewModel {
         flavorSourceTab         = .terpenes
         flavorCompositionLocked = false
         waterRatioGelatinToSugar = 75.0 / 65.0
-        terpeneVolumePPM        = 199.0
-        flavorOilVolumePercent  = 0.451
+        terpeneVolumePPM        = 219.9
+        flavorOilVolumePercent  = 0.481
 
         // Colors
         selectedColors          = [:]
         colorsLocked            = false
-        colorVolumePercent      = 0.664
+        colorVolumePercent      = 0.581
         colorCompositionLocked  = false
     }
 }

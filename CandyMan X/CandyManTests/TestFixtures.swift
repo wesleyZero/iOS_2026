@@ -33,14 +33,14 @@ enum TestFixtures {
     ///   - Shape: New Bear (35 wells per tray)
     ///   - Tray count: 1
     ///   - Active: LSD, 10 µg/gummy
-    ///   - Gelatin: 5.225%
+    ///   - Gelatin: 5.430%
     ///   - Overage: 3% (factor = 1.03)
     ///   - Oils: Lemonade 75%, Tropical Punch 25%
     ///   - Terpenes: Pineapple 70%, Passionfruit 30%
     ///   - Colors: Coral 10%, Red 30%, Yellow 60%
     ///   - Terpene PPM: 199
-    ///   - Flavor oil vol%: 0.451
-    ///   - Color vol%: 0.664
+    ///   - Flavor oil vol%: 0.481
+    ///   - Color vol%: 0.581
     static func makeTropicalPunchViewModel() -> BatchConfigViewModel {
         let vm = BatchConfigViewModel()
 
@@ -57,7 +57,7 @@ enum TestFixtures {
         vm.additionalActiveWaterML = 0.0
 
         // Gelatin
-        vm.gelatinPercentage = 5.225
+        vm.gelatinPercentage = 5.430
 
         // Overage
         vm.overageFactor = 1.03
@@ -72,8 +72,8 @@ enum TestFixtures {
         vm.oilsLocked = true
         vm.terpenesLocked = true
         vm.flavorCompositionLocked = true
-        vm.flavorOilVolumePercent = 0.451
-        vm.terpeneVolumePPM = 199.0
+        vm.flavorOilVolumePercent = 0.481
+        vm.terpeneVolumePPM = 219.9
 
         // Colors (locked)
         vm.selectedColors = [
@@ -83,7 +83,7 @@ enum TestFixtures {
         ]
         vm.colorsLocked = true
         vm.colorCompositionLocked = true
-        vm.colorVolumePercent = 0.664
+        vm.colorVolumePercent = 0.581
 
         return vm
     }

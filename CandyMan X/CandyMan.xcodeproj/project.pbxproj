@@ -7,10 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		D91074EF2F67301F00B1639F /* MeasurementCalculationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91074EE2F67301F00B1639F /* MeasurementCalculationsView.swift */; };
 		D911095D2F70578600753BA1 /* TrayPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D911095C2F70578600753BA1 /* TrayPickerSheet.swift */; };
-		D911095F2F70B00200753BA1 /* ExperimentalDataView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D911095E2F70B00200753BA1 /* ExperimentalDataView.swift */; };
-		D91109612F70B01F00753BA1 /* ExperimentalErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91109602F70B01F00753BA1 /* ExperimentalErrorView.swift */; };
 		D91109C52F71E0B800753BA1 /* StirBarPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = D91109C42F71E0B800753BA1 /* StirBarPickerSheet.swift */; };
 /* End PBXBuildFile section */
 
@@ -25,10 +22,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		D91074EE2F67301F00B1639F /* MeasurementCalculationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MeasurementCalculationsView.swift; sourceTree = "<group>"; };
 		D911095C2F70578600753BA1 /* TrayPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrayPickerSheet.swift; sourceTree = "<group>"; };
-		D911095E2F70B00200753BA1 /* ExperimentalDataView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalDataView.swift; sourceTree = "<group>"; };
-		D91109602F70B01F00753BA1 /* ExperimentalErrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExperimentalErrorView.swift; sourceTree = "<group>"; };
 		D91109C42F71E0B800753BA1 /* StirBarPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StirBarPickerSheet.swift; sourceTree = "<group>"; };
 		D968D8042F64AEED00C70E6D /* CandyMan.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = CandyMan.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D9954CD82F6E45D0005DEC69 /* CandyManTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CandyManTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -71,10 +65,7 @@
 				D968D8062F64AEED00C70E6D /* CandyMan */,
 				D9954CD92F6E45D0005DEC69 /* CandyManTests */,
 				D968D8052F64AEED00C70E6D /* Products */,
-				D91074EE2F67301F00B1639F /* MeasurementCalculationsView.swift */,
 				D911095C2F70578600753BA1 /* TrayPickerSheet.swift */,
-				D911095E2F70B00200753BA1 /* ExperimentalDataView.swift */,
-				D91109602F70B01F00753BA1 /* ExperimentalErrorView.swift */,
 				D91109C42F71E0B800753BA1 /* StirBarPickerSheet.swift */,
 			);
 			sourceTree = "<group>";
@@ -198,9 +189,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				D91074EF2F67301F00B1639F /* MeasurementCalculationsView.swift in Sources */,
-				D91109612F70B01F00753BA1 /* ExperimentalErrorView.swift in Sources */,
-				D911095F2F70B00200753BA1 /* ExperimentalDataView.swift in Sources */,
 				D911095D2F70578600753BA1 /* TrayPickerSheet.swift in Sources */,
 				D91109C52F71E0B800753BA1 /* StirBarPickerSheet.swift in Sources */,
 			);

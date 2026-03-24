@@ -160,7 +160,7 @@ struct BatchConfigViewModelTests {
         #expect(vm.trayCount == 1)
         #expect(vm.activeConcentration == 10.0)
         #expect(vm.selectedActive == .lsd)
-        #expect(vm.gelatinPercentage == 5.225)
+        #expect(vm.gelatinPercentage == 5.430)
         #expect(vm.selectedFlavors.isEmpty)
         #expect(vm.selectedColors.isEmpty)
         #expect(vm.oilsLocked == false)

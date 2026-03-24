@@ -44,7 +44,7 @@ struct ColorPickerView: View {
         !viewModel.selectedColors.isEmpty
         || viewModel.colorsLocked
         || viewModel.colorCompositionLocked
-        || viewModel.colorVolumePercent != 0.664
+        || viewModel.colorVolumePercent != 0.581
     }
 
     private var sectionHeader: some View {
@@ -56,7 +56,7 @@ struct ColorPickerView: View {
                     viewModel.selectedColors = [:]
                     viewModel.colorsLocked = false
                     viewModel.colorCompositionLocked = false
-                    viewModel.colorVolumePercent = 0.664
+                    viewModel.colorVolumePercent = 0.581
                 }
             } label: {
                 Image(systemName: "arrow.counterclockwise")

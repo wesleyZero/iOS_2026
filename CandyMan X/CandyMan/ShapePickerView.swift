@@ -35,20 +35,16 @@ enum MainSection: String, CaseIterable, Identifiable {
     case relativeFractions     = "Composition Data (Theoretical)"
     case weightMeasurements    = "Batch Measurements"
     case calibrationMeasurements = "Calibration Measurements"
-    case measurementCalculations = "Experiment Data"
-    case experimentalData      = "Experimental Data"
-    case experimentalError     = "Error (Exp. vs Theoretical)"
     case experimentalData2     = "Experiment Data 2"
-    case sigFigs               = "Sig Figs"
-    case errorAnalysis         = "Error Analysis"
+    case sigFigAnalysis        = "Significant Figures"
     case resetSection          = "New Batch"
 
     var id: String { rawValue }
 
     static let defaultOrder: [MainSection] = [
         .inputSummary, .batchOutput, .measurementEquipment, .batchValidation, .relativeFractions,
-        .weightMeasurements, .calibrationMeasurements, .experimentalData2, .measurementCalculations,
-        .experimentalData, .experimentalError, .sigFigs, .errorAnalysis, .resetSection
+        .weightMeasurements, .calibrationMeasurements, .experimentalData2, .sigFigAnalysis,
+        .resetSection
     ]
 
     static func load() -> [MainSection] {
@@ -178,11 +174,7 @@ struct ShapePickerView: View {
                                 WeightMeasurementsView().cardStyle()
                                 CalibrationMeasurementsView().cardStyle()
                                 ExperimentalData2View().cardStyle()
-                                MeasurementCalculationsView().cardStyle()
-                                ExperimentalDataView().cardStyle()
-                                ExperimentalErrorView().cardStyle()
-                                SigFigsCardView().cardStyle()
-                                ErrorAnalysisView().cardStyle()
+                                SigFigAnalysisView().cardStyle()
                             }
                             .frame(maxWidth: .infinity, alignment: .top)
                             .fixedSize(horizontal: false, vertical: true)
@@ -309,6 +301,19 @@ struct ShapePickerView: View {
                 .allowsHitTesting(false)
             }
         }
+        .overlay {
+            if viewModel.showEspadaToast {
+                ZStack {
+                    Color.black.opacity(0.75)
+                        .ignoresSafeArea()
+                    PsychedelicAlert1(text: "ESPADAAAA")
+                        .scaleEffect(2.5)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.8)))
+                .allowsHitTesting(false)
+            }
+        }
+        .animation(.cmSpring, value: viewModel.showEspadaToast)
         .keyboardDismissToolbar()
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -564,12 +569,8 @@ struct ShapePickerView: View {
         case .relativeFractions:       RelativeFractionsView()
         case .weightMeasurements:      WeightMeasurementsView()
         case .calibrationMeasurements: CalibrationMeasurementsView()
-        case .measurementCalculations: MeasurementCalculationsView()
-        case .experimentalData:        ExperimentalDataView()
-        case .experimentalError:       ExperimentalErrorView()
         case .experimentalData2:       ExperimentalData2View()
-        case .sigFigs:                 SigFigsCardView()
-        case .errorAnalysis:           ErrorAnalysisView()
+        case .sigFigAnalysis:          SigFigAnalysisView()
         case .resetSection:            resetSection
         }
     }
@@ -595,8 +596,8 @@ struct ShapePickerView: View {
 
         return VStack(spacing: 4) {
             sectionHeader(title: "Gelatin",
-                          showReset: viewModel.gelatinPercentage != 5.225) {
-                viewModel.gelatinPercentage = 5.225
+                          showReset: viewModel.gelatinPercentage != 5.430) {
+                viewModel.gelatinPercentage = 5.430
             }
             HStack(alignment: .firstTextBaseline) {
                 Button {

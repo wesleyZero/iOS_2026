@@ -181,6 +181,7 @@ final class SystemConfig {
         loadContainerTareWeights()
         loadContainers()
         loadSyringes()
+        migrateToLetterLabels()
         loadStirBars()
         loadTrays()
         loadScales()
@@ -191,6 +192,24 @@ final class SystemConfig {
             self.numericInputMode = mode
         }
         CMTheme.isDark = true
+    }
+
+    /// One-time migration: replace old un-lettered container/syringe IDs
+    /// with the new lettered factory defaults.
+    private func migrateToLetterLabels() {
+        let migrationKey = "didMigrateToLetterLabels_v1"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+        // Detect old-style IDs (e.g. "Beaker 5ml" without a letter suffix)
+        let hasOldContainers = containers.contains { $0.id == "Beaker 5ml" || $0.id == "Beaker 10ml" || $0.id == "Beaker 500ml" }
+        let hasOldSyringes = syringes.contains { $0.id == "Syringe 10mL" || $0.id == "Syringe 20mL" || $0.id == "Syringe 60mL" }
+        if hasOldContainers {
+            containers = Self.factoryContainers
+            containerTareWeights = [:]
+        }
+        if hasOldSyringes {
+            syringes = Self.factorySyringes
+        }
+        UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
     // MARK: Sugar Ratios
@@ -351,7 +370,7 @@ final class SystemConfig {
 
     /// Named syringe containers with factory-default tare masses.
     struct SyringeContainer: Identifiable, Codable, Equatable {
-        var id: String   // dictionary key, e.g. "Syringe 10mL"
+        var id: String   // dictionary key, e.g. "Syringe 50mL A"
         var name: String // display name
         var tareWeight: Double // tare mass in grams
         var tareResolution: Double // resolution of the scale used to measure tare (e.g. 0.001)
@@ -389,9 +408,9 @@ final class SystemConfig {
         }
 
         static let factoryDefaults: [SyringeContainer] = [
-            SyringeContainer(id: "Syringe 10mL",  name: "Syringe 10mL",  tareWeight: 10.000, tareResolution: 0.001),
-            SyringeContainer(id: "Syringe 20mL",  name: "Syringe 20mL",  tareWeight: 15.000, tareResolution: 0.001),
-            SyringeContainer(id: "Syringe 60mL",  name: "Syringe 60mL",  tareWeight: 30.000, tareResolution: 0.001),
+            SyringeContainer(id: "Syringe 50mL A",  name: "Syringe 50mL A",  tareWeight: 135.59, tareResolution: 0.01),
+            SyringeContainer(id: "Syringe 50mL B",  name: "Syringe 50mL B",  tareWeight: 135.67, tareResolution: 0.01),
+            SyringeContainer(id: "Syringe 100mL A", name: "Syringe 100mL A", tareWeight: 250.63, tareResolution: 0.01),
         ]
     }
 
@@ -706,13 +725,21 @@ final class SystemConfig {
         }
 
         static let factoryDefaults: [BeakerContainer] = [
-            BeakerContainer(id: "Beaker 5ml",   name: "Beaker 5ml",   tareWeight: 6.105,   tareResolution: 0.001),
-            BeakerContainer(id: "Beaker 10ml",  name: "Beaker 10ml",  tareWeight: 8.560,   tareResolution: 0.001),
-            BeakerContainer(id: "Beaker 25ml",  name: "Beaker 25ml",  tareWeight: 20.631,  tareResolution: 0.001),
-            BeakerContainer(id: "Beaker 50ml",  name: "Beaker 50ml",  tareWeight: 29.312,  tareResolution: 0.001),
-            BeakerContainer(id: "Beaker 150ml", name: "Beaker 150ml", tareWeight: 65.358,  tareResolution: 0.001),
-            BeakerContainer(id: "Beaker 250ml", name: "Beaker 250ml", tareWeight: 103.000, tareResolution: 0.001),
-            BeakerContainer(id: "Beaker 500ml", name: "Beaker 500ml", tareWeight: 161.130, tareResolution: 0.001),
+            BeakerContainer(id: "Beaker 5ml A",   name: "Beaker 5ml A",   tareWeight: 6.12,    tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 10ml A",  name: "Beaker 10ml A",  tareWeight: 8.58,    tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 10ml B",  name: "Beaker 10ml B",  tareWeight: 8.47,    tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 25ml A",  name: "Beaker 25ml A",  tareWeight: 20.63,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 25ml B",  name: "Beaker 25ml B",  tareWeight: 20.91,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 50ml A",  name: "Beaker 50ml A",  tareWeight: 29.32,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 100ml A", name: "Beaker 100ml A", tareWeight: 51.92,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 150ml A", name: "Beaker 150ml A", tareWeight: 65.38,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 150ml B", name: "Beaker 150ml B", tareWeight: 65.86,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 250ml A", name: "Beaker 250ml A", tareWeight: 103.00,  tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 250ml B", name: "Beaker 250ml B", tareWeight: 98.03,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 250ml C", name: "Beaker 250ml C", tareWeight: 98.41,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 250ml D", name: "Beaker 250ml D", tareWeight: 96.68,   tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 500ml A", name: "Beaker 500ml A", tareWeight: 160.76,  tareResolution: 0.01),
+            BeakerContainer(id: "Beaker 500ml C", name: "Beaker 500ml C", tareWeight: 161.15,  tareResolution: 0.01),
         ]
     }
 
@@ -1622,7 +1649,7 @@ final class SystemConfig {
         viewModel.additionalActiveWaterML = 1.0
 
         // Gelatin
-        viewModel.gelatinPercentage = 5.225
+        viewModel.gelatinPercentage = 5.430
 
         // Flavor oils: Lemonade 75%, Tropical Punch 25%
         viewModel.selectedFlavors = [:]
@@ -1631,12 +1658,12 @@ final class SystemConfig {
         viewModel.flavorCompositionLocked = false
         viewModel.selectedFlavors[.oil(.lemonade)] = 75.0
         viewModel.selectedFlavors[.oil(.tropicalPunch)] = 25.0
-        viewModel.flavorOilVolumePercent = 0.451
+        viewModel.flavorOilVolumePercent = 0.481
 
         // Terpenes: Pineapple 70%, Passionfruit 30%
         viewModel.selectedFlavors[.terpene(.pineapple)] = 70.0
         viewModel.selectedFlavors[.terpene(.passionfruit)] = 30.0
-        viewModel.terpeneVolumePPM = 199.0
+        viewModel.terpeneVolumePPM = 219.9
 
         // Colors: Coral 10%, Red 30%, Yellow 60%
         viewModel.selectedColors = [:]
@@ -1645,7 +1672,7 @@ final class SystemConfig {
         viewModel.selectedColors[.coral] = 10.0
         viewModel.selectedColors[.red] = 30.0
         viewModel.selectedColors[.yellow] = 60.0
-        viewModel.colorVolumePercent = 0.664
+        viewModel.colorVolumePercent = 0.581
 
         // Lock all selections
         viewModel.oilsLocked = true
@@ -1741,22 +1768,22 @@ final class SystemConfig {
         ]
 
         // HP mode — synthetic cumulative scale readings with realistic offsets
-        // Container selections: Beaker 500ml (substrate), Beaker 150ml (sugar), Beaker 10ml (activation)
+        // Container selections: Beaker 500ml A (substrate), Beaker 150ml A (sugar), Beaker 10ml A (activation)
         viewModel.highPrecisionMode = true
-        viewModel.hpSubstrateBeakerID = "Beaker 500ml"
-        viewModel.hpSugarMixBeakerID = "Beaker 150ml"
-        viewModel.hpActivationTrayID = "Beaker 10ml"
+        viewModel.hpSubstrateBeakerID = "Beaker 500ml A"
+        viewModel.hpSugarMixBeakerID = "Beaker 150ml A"
+        viewModel.hpActivationTrayID = "Beaker 10ml A"
         viewModel.hpSubstrateScaleID = "B"
         viewModel.hpSugarMixScaleID = "B"
         viewModel.hpActivationScaleID = "A"
 
-        // Gelatin section (substrate beaker tare = 161.130)
+        // Gelatin section (substrate beaker tare = 160.76)
         // Theo gelatin = 10.034g → reading = tare + gelatin ≈ 171.164
         // Theo water   = 30.103g → reading = prev + water   ≈ 201.267
         viewModel.hpGelatin = 171.28       // +0.116 over theo → gelatin mass ~10.150 (+1.2%)
         viewModel.hpGelatinWater = 201.55  // water mass = 201.55 - 171.28 = 30.270 (+0.6%)
 
-        // Sugar section (sugar beaker tare = 65.358)
+        // Sugar section (sugar beaker tare = 65.38)
         // Theo granulated = 60.324g → reading = tare + gran ≈ 125.682
         // Theo glucose    = 60.324g → reading = prev + gluc ≈ 186.007
         // Theo water      = 22.535g → reading = prev + wat  ≈ 208.542
@@ -1764,7 +1791,7 @@ final class SystemConfig {
         viewModel.hpGlucoseSyrup = 186.80  // gluc mass = 186.80 - 125.95 = 60.850 (+0.9%)
         viewModel.hpSugarWater = 209.10    // water mass = 209.10 - 186.80 = 22.300 (-1.0%)
 
-        // Activation section (activation beaker tare = 8.560)
+        // Activation section (activation beaker tare = 8.58)
         // Theo citric acid = 1.862g → reading = tare + citric ≈ 10.422
         // Theo activ water = 4.467g → reading = prev + water  ≈ 14.889
         // Theo K sorbate   = 0.186g → reading = prev + ksorb  ≈ 15.075

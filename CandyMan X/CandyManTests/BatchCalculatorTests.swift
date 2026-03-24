@@ -166,7 +166,7 @@ struct BatchCalculatorTests {
         #expect(gelatin != nil)
         #expect(water != nil)
 
-        // Gelatin volume = 5.225% of vMix
+        // Gelatin volume = 5.430% of vMix
         let expectedGelatinVol = (vm.gelatinPercentage / 100.0) * result.vMix
         #expect(abs(gelatin!.volumeML - expectedGelatinVol) < 0.001)
 
@@ -264,13 +264,13 @@ struct BatchCalculatorTests {
         vm.trayCount = 1
         vm.selectedActive = .lsd
         vm.activeConcentration = 10.0
-        vm.gelatinPercentage = 5.225
+        vm.gelatinPercentage = 5.430
         vm.overageFactor = 1.03
         vm.selectedFlavors = [:]
         vm.selectedColors = [:]
-        vm.colorVolumePercent = 0.664
-        vm.flavorOilVolumePercent = 0.451
-        vm.terpeneVolumePPM = 199.0
+        vm.colorVolumePercent = 0.581
+        vm.flavorOilVolumePercent = 0.481
+        vm.terpeneVolumePPM = 219.9
 
         let config = TestFixtures.makeDefaultSystemConfig()
         let result = BatchCalculator.calculate(viewModel: vm, systemConfig: config)
