@@ -28,23 +28,24 @@ import SwiftData
 /// Defines the set of result sections shown after the user calculates a batch.
 /// The user can reorder these on iPhone; iPad uses a fixed two-column layout.
 enum MainSection: String, CaseIterable, Identifiable {
-    case inputSummary          = "Summary"
-    case batchOutput           = "Batch Output"
-    case measurementEquipment  = "Measurement Equipment"
-    case batchValidation       = "Batch Validation"
-    case relativeFractions     = "Composition Data (Theoretical)"
-    case weightMeasurements    = "Batch Measurements"
-    case calibrationMeasurements = "Calibration Measurements"
-    case experimentalData2     = "Experiment Data 2"
-    case sigFigAnalysis        = "Significant Figures"
-    case resetSection          = "New Batch"
+    case inputSummary              = "Summary"
+    case multiActiveBatchOutput    = "Multi-Active Output"
+    case batchOutput               = "Batch Output"
+    case measurementEquipment      = "Measurement Equipment"
+    case batchValidation           = "Batch Validation"
+    case relativeFractions         = "Composition Data (Theoretical)"
+    case weightMeasurements        = "Batch Measurements"
+    case calibrationMeasurements   = "Calibration Measurements"
+    case experimentalData2         = "Experiment Data 2"
+    case sigFigAnalysis            = "Significant Figures"
+    case resetSection              = "New Batch"
 
     var id: String { rawValue }
 
     static let defaultOrder: [MainSection] = [
-        .inputSummary, .batchOutput, .measurementEquipment, .batchValidation, .relativeFractions,
-        .weightMeasurements, .calibrationMeasurements, .experimentalData2, .sigFigAnalysis,
-        .resetSection
+        .inputSummary, .multiActiveBatchOutput, .batchOutput, .measurementEquipment, .batchValidation,
+        .relativeFractions, .weightMeasurements, .calibrationMeasurements, .experimentalData2,
+        .sigFigAnalysis, .resetSection
     ]
 
     static func load() -> [MainSection] {
@@ -107,35 +108,86 @@ struct ShapePickerView: View {
             issues.append(("Trays", "set number of trays"))
         }
 
-        // Flavor oils — use the computed property from the view model
-        let oils = viewModel.selectedOils
-        if !oils.isEmpty {
-            let oilTotal = oils.reduce(0.0) { $0 + (viewModel.selectedFlavors[$1] ?? 0) }
-            if !viewModel.oilsLocked {
-                issues.append(("Flavor Oils", "lock blend ratios"))
-            } else if abs(oilTotal - 100) >= 0.5 {
-                issues.append(("Flavor Oils", "blend must sum to 100%"))
-            }
-        }
+        if viewModel.multiActiveEnabled {
+            // Multi-active: check all tray configs.
+            // For the currently-selected tray, read from the flat viewModel properties
+            // (they hold the live editing state). For other trays, read from trayConfigs.
+            for i in 0..<viewModel.trayConfigs.count {
+                let label = "Tray \(i + 1)"
+                let isCurrentTray = (i == viewModel.selectedTrayIndex)
 
-        // Terpenes — use the computed property from the view model
-        let terpenes = viewModel.selectedTerpenes
-        if !terpenes.isEmpty {
-            let terpTotal = terpenes.reduce(0.0) { $0 + (viewModel.selectedFlavors[$1] ?? 0) }
-            if !viewModel.terpenesLocked {
-                issues.append(("Terpenes", "lock blend ratios"))
-            } else if abs(terpTotal - 100) >= 0.5 {
-                issues.append(("Terpenes", "blend must sum to 100%"))
-            }
-        }
+                // Read the right source for this tray
+                let flavors: [FlavorSelection: Double] = isCurrentTray ? viewModel.selectedFlavors : viewModel.trayConfigs[i].selectedFlavors
+                let oilsLocked: Bool = isCurrentTray ? viewModel.oilsLocked : viewModel.trayConfigs[i].oilsLocked
+                let terpenesLocked: Bool = isCurrentTray ? viewModel.terpenesLocked : viewModel.trayConfigs[i].terpenesLocked
+                let colors: [GummyColor: Double] = isCurrentTray ? viewModel.selectedColors : viewModel.trayConfigs[i].selectedColors
+                let colorsLocked: Bool = isCurrentTray ? viewModel.colorsLocked : viewModel.trayConfigs[i].colorsLocked
 
-        // Colors
-        if !viewModel.selectedColors.isEmpty {
-            let colorTotal = viewModel.colorBlendTotal
-            if !viewModel.colorsLocked {
-                issues.append(("Colors", "lock blend ratios"))
-            } else if abs(colorTotal - 100) >= 0.5 {
-                issues.append(("Colors", "blend must sum to 100%"))
+                // Oils
+                let oils = flavors.keys.filter { if case .oil = $0 { return true }; return false }
+                if !oils.isEmpty {
+                    let oilTotal = oils.reduce(0.0) { $0 + (flavors[$1] ?? 0) }
+                    if !oilsLocked {
+                        issues.append(("\(label) Flavor Oils", "lock blend ratios"))
+                    } else if abs(oilTotal - 100) >= 0.5 {
+                        issues.append(("\(label) Flavor Oils", "blend must sum to 100%"))
+                    }
+                }
+
+                // Terpenes
+                let terpKeys = flavors.keys.filter { if case .terpene = $0 { return true }; return false }
+                if !terpKeys.isEmpty {
+                    let terpTotal = terpKeys.reduce(0.0) { $0 + (flavors[$1] ?? 0) }
+                    if !terpenesLocked {
+                        issues.append(("\(label) Terpenes", "lock blend ratios"))
+                    } else if abs(terpTotal - 100) >= 0.5 {
+                        issues.append(("\(label) Terpenes", "blend must sum to 100%"))
+                    }
+                }
+
+                // Colors
+                if !colors.isEmpty {
+                    let colorTotal = colors.values.reduce(0, +)
+                    if !colorsLocked {
+                        issues.append(("\(label) Colors", "lock blend ratios"))
+                    } else if abs(colorTotal - 100) >= 0.5 {
+                        issues.append(("\(label) Colors", "blend must sum to 100%"))
+                    }
+                }
+            }
+        } else {
+            // Single-active: existing checks
+
+            // Flavor oils
+            let oils = viewModel.selectedOils
+            if !oils.isEmpty {
+                let oilTotal = oils.reduce(0.0) { $0 + (viewModel.selectedFlavors[$1] ?? 0) }
+                if !viewModel.oilsLocked {
+                    issues.append(("Flavor Oils", "lock blend ratios"))
+                } else if abs(oilTotal - 100) >= 0.5 {
+                    issues.append(("Flavor Oils", "blend must sum to 100%"))
+                }
+            }
+
+            // Terpenes
+            let terpenes = viewModel.selectedTerpenes
+            if !terpenes.isEmpty {
+                let terpTotal = terpenes.reduce(0.0) { $0 + (viewModel.selectedFlavors[$1] ?? 0) }
+                if !viewModel.terpenesLocked {
+                    issues.append(("Terpenes", "lock blend ratios"))
+                } else if abs(terpTotal - 100) >= 0.5 {
+                    issues.append(("Terpenes", "blend must sum to 100%"))
+                }
+            }
+
+            // Colors
+            if !viewModel.selectedColors.isEmpty {
+                let colorTotal = viewModel.colorBlendTotal
+                if !viewModel.colorsLocked {
+                    issues.append(("Colors", "lock blend ratios"))
+                } else if abs(colorTotal - 100) >= 0.5 {
+                    issues.append(("Colors", "blend must sum to 100%"))
+                }
             }
         }
 
@@ -166,7 +218,11 @@ struct ShapePickerView: View {
                         // iPad: two-column output
                         HStack(alignment: .top, spacing: 0) {
                             VStack(spacing: 12) {
-                                BatchOutputView().cardStyle()
+                                if viewModel.multiActiveEnabled {
+                                    MultiActiveBatchOutputView().cardStyle()
+                                } else {
+                                    BatchOutputView().cardStyle()
+                                }
                                 MeasurementEquipmentView().cardStyle()
                                 BatchValidationView().cardStyle()
                                 RelativeFractionsView().cardStyle()
@@ -201,6 +257,9 @@ struct ShapePickerView: View {
                             templateSection.cardStyle()
                             chooseShape.cardStyle()
                             chooseTrays(viewModel: viewModel).cardStyle()
+                            if viewModel.trayCount > 1 {
+                                multiActiveSection.cardStyle()
+                            }
                             chooseActive(viewModel: viewModel).cardStyle()
                             chooseGelatin(viewModel: viewModel).cardStyle()
                         }
@@ -224,6 +283,9 @@ struct ShapePickerView: View {
                         templateSection.cardStyle()
                         chooseShape.cardStyle()
                         chooseTrays(viewModel: viewModel).cardStyle()
+                        if viewModel.trayCount > 1 {
+                            multiActiveSection.cardStyle()
+                        }
                         chooseActive(viewModel: viewModel).cardStyle()
                         chooseGelatin(viewModel: viewModel).cardStyle()
                         ColorPickerView().cardStyle()
@@ -269,6 +331,12 @@ struct ShapePickerView: View {
         }
         .onChange(of: viewModel.trayCount) {
             viewModel.checkAndClearTemplateIfChanged()
+            if viewModel.trayCount <= 1 && viewModel.multiActiveEnabled {
+                withAnimation(.cmSpring) { viewModel.disableMultiActive() }
+            } else if viewModel.multiActiveEnabled {
+                viewModel.saveCurrentTrayToConfigs()
+                viewModel.syncTrayConfigs()
+            }
         }
         .overlay(alignment: .bottomLeading) {
             VStack(spacing: 8) {
@@ -415,6 +483,12 @@ struct ShapePickerView: View {
 
             Button {
                 CMHaptic.heavy()
+                if viewModel.multiActiveEnabled {
+                    viewModel.saveCurrentTrayToConfigs()
+                    viewModel.trayActivationStates = (0..<viewModel.trayCount).map { _ in
+                        BatchConfigViewModel.TrayActivationState()
+                    }
+                }
                 viewModel.prePopulateRecommendedScales(systemConfig: systemConfig)
                 withAnimation(.cmSpring) {
                     viewModel.batchCalculated = true
@@ -608,7 +682,14 @@ struct ShapePickerView: View {
     private func sectionView(_ section: MainSection) -> some View {
         switch section {
         case .inputSummary:            InputSummaryView()
-        case .batchOutput:             BatchOutputView()
+        case .multiActiveBatchOutput:
+            if viewModel.multiActiveEnabled {
+                MultiActiveBatchOutputView()
+            }
+        case .batchOutput:
+            if !viewModel.multiActiveEnabled {
+                BatchOutputView()
+            }
         case .measurementEquipment:    MeasurementEquipmentView()
         case .batchValidation:         BatchValidationView()
         case .relativeFractions:       RelativeFractionsView()
@@ -843,36 +924,38 @@ struct ShapePickerView: View {
             }.padding(.horizontal, 24).padding(.vertical, 8)
 
             // Separator
-            Text("+")
-                .font(.caption).foregroundStyle(CMTheme.textTertiary)
-                .frame(maxWidth: .infinity, alignment: .center)
-                .padding(.vertical, 2)
+            if !viewModel.multiActiveEnabled {
+                Text("+")
+                    .font(.caption).foregroundStyle(CMTheme.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 2)
 
-            // Extra gummies picker
-            HStack {
-                Button {
-                    CMHaptic.selection()
-                    withAnimation(.cmSpring) { viewModel.extraGummies = max(0, viewModel.extraGummies - 1) }
-                } label: {
-                    Image(systemName: "minus.circle.fill").font(.system(size: 30)).foregroundStyle(systemConfig.designTitle)
-                }
-                Spacer()
-                Text("\(viewModel.extraGummies)")
-                    .font(.system(size: 20, weight: .bold))
-                    .skittleSwirl()
-                    .contentTransition(.numericText())
-                Text("Gumm\(viewModel.extraGummies == 1 ? "y" : "ies")").font(.system(size: 20)).foregroundStyle(CMTheme.textSecondary)
-                Spacer()
-                Button {
-                    CMHaptic.selection()
-                    let max = perTray - 1
-                    withAnimation(.cmSpring) { viewModel.extraGummies = min(max, viewModel.extraGummies + 1) }
-                } label: {
-                    Image(systemName: "plus.circle.fill").font(.system(size: 36)).foregroundStyle(systemConfig.designTitle)
-                }
-                .opacity(viewModel.extraGummies < perTray - 1 ? 1 : 0.3)
-                .disabled(viewModel.extraGummies >= perTray - 1)
-            }.padding(.horizontal, 24).padding(.vertical, 8)
+                // Extra gummies picker (disabled in multi-active mode)
+                HStack {
+                    Button {
+                        CMHaptic.selection()
+                        withAnimation(.cmSpring) { viewModel.extraGummies = max(0, viewModel.extraGummies - 1) }
+                    } label: {
+                        Image(systemName: "minus.circle.fill").font(.system(size: 30)).foregroundStyle(systemConfig.designTitle)
+                    }
+                    Spacer()
+                    Text("\(viewModel.extraGummies)")
+                        .font(.system(size: 20, weight: .bold))
+                        .skittleSwirl()
+                        .contentTransition(.numericText())
+                    Text("Gumm\(viewModel.extraGummies == 1 ? "y" : "ies")").font(.system(size: 20)).foregroundStyle(CMTheme.textSecondary)
+                    Spacer()
+                    Button {
+                        CMHaptic.selection()
+                        let max = perTray - 1
+                        withAnimation(.cmSpring) { viewModel.extraGummies = min(max, viewModel.extraGummies + 1) }
+                    } label: {
+                        Image(systemName: "plus.circle.fill").font(.system(size: 36)).foregroundStyle(systemConfig.designTitle)
+                    }
+                    .opacity(viewModel.extraGummies < perTray - 1 ? 1 : 0.3)
+                    .disabled(viewModel.extraGummies >= perTray - 1)
+                }.padding(.horizontal, 24).padding(.vertical, 8)
+            }
 
             // Fine print
             Text("\(perTray) gummies / tray")
@@ -883,6 +966,60 @@ struct ShapePickerView: View {
 
     private func chooseActive(viewModel: BatchConfigViewModel) -> some View {
         ActivesSectionView(viewModel: viewModel)
+    }
+
+    // MARK: - Multi-Active Toggle
+
+    private var multiActiveSection: some View {
+        @Bindable var viewModel = viewModel
+        return VStack(spacing: 8) {
+            HStack {
+                Text("Multi-Active")
+                    .font(.headline)
+                    .foregroundStyle(systemConfig.designTitle)
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { viewModel.multiActiveEnabled },
+                    set: { newValue in
+                        CMHaptic.medium()
+                        withAnimation(.cmSpring) {
+                            if newValue {
+                                viewModel.enableMultiActive()
+                            } else {
+                                viewModel.disableMultiActive()
+                            }
+                        }
+                    }
+                ))
+                .labelsHidden()
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+
+            if viewModel.multiActiveEnabled {
+                Picker("Tray", selection: Binding(
+                    get: { viewModel.selectedTrayIndex },
+                    set: { newIndex in
+                        CMHaptic.selection()
+                        withAnimation(.cmSpring) {
+                            viewModel.loadTrayConfig(newIndex)
+                        }
+                    }
+                )) {
+                    ForEach(0..<viewModel.trayCount, id: \.self) { i in
+                        Text("Tray \(i + 1)").tag(i)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 100)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+
+                Text("Configuring Tray \(viewModel.selectedTrayIndex + 1) of \(viewModel.trayCount)")
+                    .font(.caption)
+                    .foregroundStyle(systemConfig.designAlert)
+                    .padding(.bottom, 8)
+            }
+        }
     }
 
     // MARK: - Helpers
@@ -1011,36 +1148,68 @@ struct InputSummaryView: View {
             summaryRow("Shape", value: viewModel.selectedShape.rawValue)
             summaryRow("Trays", value: "\(viewModel.trayCount)")
             summaryRow("Gummies", value: "\(wellCount)")
-            summaryRow("Active", value: viewModel.selectedActive.rawValue)
-            summaryRow("Concentration", value: String(format: "%.2f %@ / gummy", viewModel.activeConcentration, viewModel.units.rawValue))
-            summaryRow("Gelatin %", value: String(format: "%.3f%%", viewModel.gelatinPercentage))
 
-            // Terpenes — use view model's computed property
-            let terpenes = viewModel.selectedFlavors.filter { if case .terpene = $0.key { return true }; return false }
-            if !terpenes.isEmpty {
-                summarySubheader("Terpenes")
-                summaryRow("PPM", value: String(format: "%.1f", viewModel.terpeneVolumePPM))
-                ForEach(terpenes.sorted(by: { $0.key.id < $1.key.id }), id: \.key) { flavor, pct in
-                    summaryRow(flavor.displayName, value: String(format: "%.0f%%", pct))
+            if viewModel.multiActiveEnabled {
+                // Multi-active summary
+                summaryRow("Mode", value: "Multi-Active")
+
+                ForEach(viewModel.trayConfigs) { config in
+                    summarySubheader("Tray \(config.id + 1)")
+                    summaryRow("Active", value: config.selectedActive.rawValue)
+                    summaryRow("Concentration", value: String(format: "%.2f %@ / gummy", config.activeConcentration, config.units.rawValue))
+                    summaryRow("Gelatin %", value: String(format: "%.3f%%", config.gelatinPercentage))
+
+                    // Per-tray colors
+                    if !config.selectedColors.isEmpty {
+                        let colorNames = config.selectedColors.keys.sorted(by: { $0.rawValue < $1.rawValue }).map(\.rawValue).joined(separator: ", ")
+                        summaryRow("Colors", value: colorNames)
+                    }
+
+                    // Per-tray flavors
+                    let terpKeys = config.selectedFlavors.keys.filter { if case .terpene = $0 { return true }; return false }
+                    if !terpKeys.isEmpty {
+                        let names = terpKeys.sorted(by: { $0.id < $1.id }).map(\.displayName).joined(separator: ", ")
+                        summaryRow("Terpenes", value: names)
+                    }
+                    let oilKeys = config.selectedFlavors.keys.filter { if case .oil = $0 { return true }; return false }
+                    if !oilKeys.isEmpty {
+                        let names = oilKeys.sorted(by: { $0.id < $1.id }).map(\.displayName).joined(separator: ", ")
+                        summaryRow("Oils", value: names)
+                    }
                 }
-            }
+            } else {
+                // Single-active summary
+                summaryRow("Active", value: viewModel.selectedActive.rawValue)
+                summaryRow("Concentration", value: String(format: "%.2f %@ / gummy", viewModel.activeConcentration, viewModel.units.rawValue))
+                summaryRow("Gelatin %", value: String(format: "%.3f%%", viewModel.gelatinPercentage))
 
-            // Flavor Oils
-            let oils = viewModel.selectedFlavors.filter { if case .oil = $0.key { return true }; return false }
-            if !oils.isEmpty {
-                summarySubheader("Flavor Oils")
-                summaryRow("Volume %", value: String(format: "%.3f%%", viewModel.flavorOilVolumePercent))
-                ForEach(oils.sorted(by: { $0.key.id < $1.key.id }), id: \.key) { flavor, pct in
-                    summaryRow(flavor.displayName, value: String(format: "%.0f%%", pct))
+                // Terpenes
+                let terpenes = viewModel.selectedFlavors.filter { if case .terpene = $0.key { return true }; return false }
+                if !terpenes.isEmpty {
+                    summarySubheader("Terpenes")
+                    summaryRow("PPM", value: String(format: "%.1f", viewModel.terpeneVolumePPM))
+                    ForEach(terpenes.sorted(by: { $0.key.id < $1.key.id }), id: \.key) { flavor, pct in
+                        summaryRow(flavor.displayName, value: String(format: "%.0f%%", pct))
+                    }
                 }
-            }
 
-            // Colors
-            if !viewModel.selectedColors.isEmpty {
-                summarySubheader("Colors")
-                summaryRow("Volume %", value: String(format: "%.3f%%", viewModel.colorVolumePercent))
-                ForEach(viewModel.selectedColors.sorted(by: { $0.key.rawValue < $1.key.rawValue }), id: \.key) { color, pct in
-                    summaryRow(color.rawValue, value: String(format: "%.0f%%", pct))
+                // Flavor Oils
+                let oils = viewModel.selectedFlavors.filter { if case .oil = $0.key { return true }; return false }
+                if !oils.isEmpty {
+                    summarySubheader("Flavor Oils")
+                    summaryRow("Volume %", value: String(format: "%.3f%%", viewModel.flavorOilVolumePercent))
+                    ForEach(oils.sorted(by: { $0.key.id < $1.key.id }), id: \.key) { flavor, pct in
+                        summaryRow(flavor.displayName, value: String(format: "%.0f%%", pct))
+                    }
+                }
+
+                // Colors
+                if !viewModel.selectedColors.isEmpty {
+                    summarySubheader("Colors")
+                    summaryRow("Volume %", value: String(format: "%.3f%%", viewModel.colorVolumePercent))
+                    ForEach(viewModel.selectedColors.sorted(by: { $0.key.rawValue < $1.key.rawValue }), id: \.key) { color, pct in
+                        summaryRow(color.rawValue, value: String(format: "%.0f%%", pct))
+                    }
                 }
             }
 

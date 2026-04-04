@@ -75,10 +75,30 @@ struct BatchResult {
     }
 }
 
+// MARK: - Multi-Active Batch Result
+
+/// Result of a multi-active batch calculation where each tray has independent settings.
+struct MultiActiveBatchResult {
+    let vBase: Double
+    let vMix: Double
+    let perTrayResults: [PerTrayResult]
+    let combinedGelatinMix: MixGroup
+    let combinedSugarMix: MixGroup
+
+    struct PerTrayResult: Identifiable {
+        let id: Int  // tray index (0-based)
+        let activationMix: MixGroup
+        let trayConfig: TrayConfig
+        let vMixPerTray: Double
+    }
+}
+
 // MARK: - Calculator
 
 /// Stateless calculator — call `BatchCalculator.calculate(...)` to produce a `BatchResult`.
 enum BatchCalculator {
+
+    // MARK: - Single-Active
 
     /// Computes the full recipe for the current batch configuration.
     ///
@@ -97,101 +117,236 @@ enum BatchCalculator {
         let vBase = Double(viewModel.totalGummies(using: systemConfig)) * spec.volumeML
         let vMix  = vBase * viewModel.overageFactor
 
-        // ── 2. Activation Mix ────────────────────────────────────────────────
-        // Every component's volume is a fraction of vMix.
-        // Mass = volume × density for each ingredient.
-        // Activation water is calculated from solubility (not a fixed fraction).
-        var activationComponents: [BatchComponent] = []
+        // ── 2–4. Build mix groups using helpers ──────────────────────────────
+        let activationMix = buildActivationMix(
+            vMix: vMix,
+            colorVolumePercent: viewModel.colorVolumePercent,
+            selectedColors: viewModel.selectedColors,
+            flavorOilVolumePercent: viewModel.flavorOilVolumePercent,
+            selectedFlavors: viewModel.selectedFlavors,
+            terpeneVolumePPM: viewModel.terpeneVolumePPM,
+            additionalActiveWaterML: viewModel.additionalActiveWaterML,
+            systemConfig: systemConfig
+        )
 
-        // 2a  Citric acid
+        let gelatinMix = buildGelatinMix(
+            vMix: vMix,
+            gelatinPercentage: viewModel.gelatinPercentage,
+            systemConfig: systemConfig
+        )
+
+        let vRemaining = vMix - activationMix.totalVolumeML - gelatinMix.totalVolumeML
+        let sugarMix = buildSugarMix(vRemaining: vRemaining, systemConfig: systemConfig)
+
+        return BatchResult(
+            vBase: vBase,
+            vMix: vMix,
+            activationMix: activationMix,
+            gelatinMix: gelatinMix,
+            sugarMix: sugarMix
+        )
+    }
+
+    // MARK: - Multi-Active
+
+    /// Computes recipes for a multi-active batch where each tray has independent settings.
+    ///
+    /// Algorithm:
+    /// 1. Compute total vMix across all trays (same shape, equal per-tray share).
+    /// 2. For each tray: build activation mix using that tray's config, with 0 additional water.
+    /// 3. For each tray: build gelatin mix using that tray's gelatin %.
+    /// 4. Aggregate gelatin across all trays. Sugar mix fills the residual.
+    static func calculateMultiActive(
+        viewModel: BatchConfigViewModel,
+        systemConfig: SystemConfig
+    ) -> MultiActiveBatchResult {
+
+        // ── 1. Target pour volume (entire batch) ─────────────────────────────
+        let spec  = systemConfig.spec(for: viewModel.selectedShape)
+        let vBase = Double(viewModel.totalGummies(using: systemConfig)) * spec.volumeML
+        let vMix  = vBase * viewModel.overageFactor
+        let vMixPerTray = vMix / Double(max(1, viewModel.trayCount))
+
+        // ── 2 & 3. Per-tray activation + gelatin mixes ──────────────────────
+        var perTrayResults: [MultiActiveBatchResult.PerTrayResult] = []
+        var totalActivationVolume = 0.0
+        var totalGelatinMass = 0.0
+        var totalGelatinWaterMass = 0.0
+        var totalGelatinVolume = 0.0
+        var totalGelatinWaterVolume = 0.0
+
+        for (index, trayConfig) in viewModel.trayConfigs.enumerated() {
+            // Per-tray additional water: use flat property for selected tray, stored state for others
+            let additionalWater: Double
+            if index == viewModel.selectedTrayIndex {
+                additionalWater = viewModel.additionalActiveWaterML
+            } else if viewModel.trayActivationStates.indices.contains(index) {
+                additionalWater = viewModel.trayActivationStates[index].additionalActiveWaterML
+            } else {
+                additionalWater = 0
+            }
+
+            let activationMix = buildActivationMix(
+                vMix: vMixPerTray,
+                colorVolumePercent: trayConfig.colorVolumePercent,
+                selectedColors: trayConfig.selectedColors,
+                flavorOilVolumePercent: trayConfig.flavorOilVolumePercent,
+                selectedFlavors: trayConfig.selectedFlavors,
+                terpeneVolumePPM: trayConfig.terpeneVolumePPM,
+                additionalActiveWaterML: additionalWater,
+                systemConfig: systemConfig
+            )
+            totalActivationVolume += activationMix.totalVolumeML
+
+            // Per-tray gelatin mix
+            let gelatinMix = buildGelatinMix(
+                vMix: vMixPerTray,
+                gelatinPercentage: trayConfig.gelatinPercentage,
+                systemConfig: systemConfig
+            )
+            for comp in gelatinMix.components {
+                if comp.label == "Gelatin" {
+                    totalGelatinMass += comp.massGrams
+                    totalGelatinVolume += comp.volumeML
+                } else {
+                    totalGelatinWaterMass += comp.massGrams
+                    totalGelatinWaterVolume += comp.volumeML
+                }
+            }
+
+            perTrayResults.append(.init(
+                id: trayConfig.id,
+                activationMix: activationMix,
+                trayConfig: trayConfig,
+                vMixPerTray: vMixPerTray
+            ))
+        }
+
+        // ── 4. Combined gelatin mix ──────────────────────────────────────────
+        let combinedGelatinMix = MixGroup(name: "Gelatin Mix", components: [
+            BatchComponent(label: "Gelatin", massGrams: totalGelatinMass, volumeML: totalGelatinVolume, displayUnit: "g"),
+            BatchComponent(label: "Water", massGrams: totalGelatinWaterMass, volumeML: totalGelatinWaterVolume, displayUnit: "ml"),
+        ])
+
+        // ── 5. Sugar mix — residual volume closure ───────────────────────────
+        let vRemaining = vMix - totalActivationVolume - combinedGelatinMix.totalVolumeML
+        let combinedSugarMix = buildSugarMix(vRemaining: vRemaining, systemConfig: systemConfig)
+
+        return MultiActiveBatchResult(
+            vBase: vBase,
+            vMix: vMix,
+            perTrayResults: perTrayResults,
+            combinedGelatinMix: combinedGelatinMix,
+            combinedSugarMix: combinedSugarMix
+        )
+    }
+
+    // MARK: - Helpers
+
+    /// Builds the activation mix for a given volume budget.
+    private static func buildActivationMix(
+        vMix: Double,
+        colorVolumePercent: Double,
+        selectedColors: [GummyColor: Double],
+        flavorOilVolumePercent: Double,
+        selectedFlavors: [FlavorSelection: Double],
+        terpeneVolumePPM: Double,
+        additionalActiveWaterML: Double,
+        systemConfig: SystemConfig
+    ) -> MixGroup {
+        var components: [BatchComponent] = []
+
+        // Citric acid
         let vCitric = (systemConfig.citricAcidPercent / 100.0) * vMix
         let mCitric = vCitric * systemConfig.densityCitricAcid
-        activationComponents.append(BatchComponent(
+        components.append(BatchComponent(
             label: "Citric Acid", massGrams: mCitric, volumeML: vCitric, displayUnit: "g",
             activationCategory: .preservative
         ))
 
-        // 2b  Potassium sorbate
+        // Potassium sorbate
         let vSorbate = (systemConfig.potassiumSorbatePercent / 100.0) * vMix
         let mSorbate = vSorbate * systemConfig.densityPotassiumSorbate
-        activationComponents.append(BatchComponent(
+        components.append(BatchComponent(
             label: "Potassium Sorbate", massGrams: mSorbate, volumeML: vSorbate, displayUnit: "g",
             activationCategory: .preservative
         ))
 
-        // 2c  Colors — total color volume split by user blend ratios
-        let vColorTotal = (viewModel.colorVolumePercent / 100.0) * vMix
-        let sortedColors = Array(viewModel.selectedColors.keys).sorted { $0.rawValue < $1.rawValue }
+        // Colors
+        let vColorTotal = (colorVolumePercent / 100.0) * vMix
+        let sortedColors = Array(selectedColors.keys).sorted { $0.rawValue < $1.rawValue }
         for color in sortedColors {
-            let fraction = (viewModel.selectedColors[color] ?? 0) / 100.0
+            let fraction = (selectedColors[color] ?? 0) / 100.0
             let vColor   = vColorTotal * fraction
             let mColor   = vColor * systemConfig.densityFoodColoring
-            activationComponents.append(BatchComponent(
+            components.append(BatchComponent(
                 label: "\(color.rawValue) Color", massGrams: mColor, volumeML: vColor, displayUnit: "ml",
                 activationCategory: .color
             ))
         }
 
-        // 2d  Flavor oils — total oil volume split by blend ratios
-        let vOilTotal = (viewModel.flavorOilVolumePercent / 100.0) * vMix
-        let oils = viewModel.selectedFlavors.keys.filter { if case .oil = $0 { return true }; return false }
+        // Flavor oils
+        let vOilTotal = (flavorOilVolumePercent / 100.0) * vMix
+        let oils = selectedFlavors.keys.filter { if case .oil = $0 { return true }; return false }
         for oil in oils {
-            let fraction = (viewModel.selectedFlavors[oil] ?? 0) / 100.0
+            let fraction = (selectedFlavors[oil] ?? 0) / 100.0
             let vOil     = vOilTotal * fraction
             let mOil     = vOil * systemConfig.densityFlavorOil
-            activationComponents.append(BatchComponent(
+            components.append(BatchComponent(
                 label: "\(oil.displayName) Oil", massGrams: mOil, volumeML: vOil, displayUnit: "ml",
                 activationCategory: .flavorOil
             ))
         }
 
-        // 2e  Terpenes — from PPM, split by blend ratios
-        let vTerpTotalML = (viewModel.terpeneVolumePPM / 1_000_000.0) * vMix
-        let terpenes = viewModel.selectedFlavors.keys.filter { if case .terpene = $0 { return true }; return false }
+        // Terpenes
+        let vTerpTotalML = (terpeneVolumePPM / 1_000_000.0) * vMix
+        let terpenes = selectedFlavors.keys.filter { if case .terpene = $0 { return true }; return false }
         for terp in terpenes {
-            let fraction = (viewModel.selectedFlavors[terp] ?? 0) / 100.0
+            let fraction = (selectedFlavors[terp] ?? 0) / 100.0
             let vTerp    = vTerpTotalML * fraction
             let mTerp    = vTerp * systemConfig.densityTerpenes
-            activationComponents.append(BatchComponent(
+            components.append(BatchComponent(
                 label: "\(terp.displayName) Terpene", massGrams: mTerp, volumeML: vTerp, displayUnit: "µL",
                 activationCategory: .terpene
             ))
         }
 
-        // 2f  Activation water — enough to dissolve both preservatives
-        //     plus any user-specified additional water for the active substance.
+        // Activation water — solubility-based + additional
         let waterForCitric  = SubstanceSolubility.citricAcid.minWaterML(toDissolveGrams: mCitric)
         let waterForSorbate = SubstanceSolubility.potassiumSorbate.minWaterML(toDissolveGrams: mSorbate)
-        let vActivationWater = waterForCitric + waterForSorbate + viewModel.additionalActiveWaterML
+        let vActivationWater = waterForCitric + waterForSorbate + additionalActiveWaterML
         let mActivationWater = vActivationWater * systemConfig.densityWater
-        activationComponents.append(BatchComponent(
+        components.append(BatchComponent(
             label: "Activation Water", massGrams: mActivationWater, volumeML: vActivationWater, displayUnit: "ml",
             activationCategory: .preservative
         ))
 
-        let activationMix = MixGroup(name: "Activation Mix", components: activationComponents)
-        let vActivation   = activationMix.totalVolumeML
+        return MixGroup(name: "Activation Mix", components: components)
+    }
 
-        // ── 3. Gelatin Mix ───────────────────────────────────────────────────
-        // Volume fraction from gelatin %, then hydration water from the
-        // water:gelatin mass ratio (φ_gel). NOT forced to a fixed budget.
-        let vGelatin     = (viewModel.gelatinPercentage / 100.0) * vMix
-        let mGelatin     = vGelatin * systemConfig.densityGelatin
-        let phiGel       = systemConfig.waterToGelatinMassRatio
+    /// Builds the gelatin mix for a given volume budget and gelatin percentage.
+    private static func buildGelatinMix(
+        vMix: Double,
+        gelatinPercentage: Double,
+        systemConfig: SystemConfig
+    ) -> MixGroup {
+        let vGelatin      = (gelatinPercentage / 100.0) * vMix
+        let mGelatin      = vGelatin * systemConfig.densityGelatin
+        let phiGel        = systemConfig.waterToGelatinMassRatio
         let mGelatinWater = mGelatin * phiGel
         let vGelatinWater = mGelatinWater / systemConfig.densityWater
 
-        let gelatinMix = MixGroup(name: "Gelatin Mix", components: [
-            BatchComponent(label: "Gelatin", massGrams: mGelatin,      volumeML: vGelatin,      displayUnit: "g"),
-            BatchComponent(label: "Water",   massGrams: mGelatinWater, volumeML: vGelatinWater, displayUnit: "ml"),
+        return MixGroup(name: "Gelatin Mix", components: [
+            BatchComponent(label: "Gelatin", massGrams: mGelatin, volumeML: vGelatin, displayUnit: "g"),
+            BatchComponent(label: "Water", massGrams: mGelatinWater, volumeML: vGelatinWater, displayUnit: "ml"),
         ])
-        let vGelatinMix = gelatinMix.totalVolumeML
+    }
 
-        // ── 4. Sugar Mix — residual volume closure ───────────────────────────
-        // vRemaining = vMix - vActivation - vGelatinMix
-        // Sugar mass from vRemaining × ρ_mix, then split by glucose:granulated ratio.
-        // Water absorbs the residual so the mix closes to vRemaining exactly.
-        let vRemaining  = vMix - vActivation - vGelatinMix
+    /// Builds the sugar mix to fill the remaining volume exactly (residual closure).
+    private static func buildSugarMix(
+        vRemaining: Double,
+        systemConfig: SystemConfig
+    ) -> MixGroup {
         let phiSugar    = systemConfig.sugarToWaterMassRatio
         let rhoMix      = systemConfig.sugarMixDensity
         let mSugarMix   = vRemaining * rhoMix
@@ -202,24 +357,15 @@ enum BatchCalculator {
         let mGlucoseSyrup = mSugarTotal * gRatio / (1.0 + gRatio)
         let mGranulated   = mSugarTotal / (1.0 + gRatio)
         let vGlucoseSyrup = mGlucoseSyrup / systemConfig.densityGlucoseSyrup
-        let vGranulated   = mGranulated   / systemConfig.densitySucrose
+        let vGranulated   = mGranulated / systemConfig.densitySucrose
 
-        // Water volume closes the residual exactly (absorbs floating-point remainder).
         let vSugarWater       = vRemaining - vGlucoseSyrup - vGranulated
         let mSugarWaterClosed = vSugarWater * systemConfig.densityWater
 
-        let sugarMix = MixGroup(name: "Sugar Mix", components: [
-            BatchComponent(label: "Glucose Syrup",    massGrams: mGlucoseSyrup,    volumeML: vGlucoseSyrup, displayUnit: "g"),
-            BatchComponent(label: "Granulated Sugar", massGrams: mGranulated,       volumeML: vGranulated,   displayUnit: "g"),
-            BatchComponent(label: "Water",            massGrams: mSugarWaterClosed, volumeML: vSugarWater,   displayUnit: "g"),
+        return MixGroup(name: "Sugar Mix", components: [
+            BatchComponent(label: "Glucose Syrup", massGrams: mGlucoseSyrup, volumeML: vGlucoseSyrup, displayUnit: "g"),
+            BatchComponent(label: "Granulated Sugar", massGrams: mGranulated, volumeML: vGranulated, displayUnit: "g"),
+            BatchComponent(label: "Water", massGrams: mSugarWaterClosed, volumeML: vSugarWater, displayUnit: "g"),
         ])
-
-        return BatchResult(
-            vBase: vBase,
-            vMix: vMix,
-            activationMix: activationMix,
-            gelatinMix: gelatinMix,
-            sugarMix: sugarMix
-        )
     }
 }

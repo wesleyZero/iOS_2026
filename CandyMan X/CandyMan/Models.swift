@@ -248,3 +248,36 @@ enum FlavorSourceType: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 }
+
+// MARK: - Per-Tray Configuration (Multi-Active)
+
+/// Per-tray configuration for multi-active mode.
+/// Each tray independently stores its active substance, gelatin %, colors,
+/// flavor oils, and terpenes.
+struct TrayConfig: Identifiable {
+    let id: Int  // 0-based tray index
+
+    // Active
+    var selectedActive: Active = .lsd
+    var activeConcentration: Double = 10.0
+    var units: ConcentrationUnit = .ug
+    var lsdUgPerTab: Double = 117.0
+
+    // Gelatin
+    var gelatinPercentage: Double = 5.430
+
+    // Colors
+    var selectedColors: [GummyColor: Double] = [:]
+    var colorsLocked: Bool = false
+    var colorVolumePercent: Double = 0.581
+    var colorCompositionLocked: Bool = false
+
+    // Flavors
+    var selectedFlavors: [FlavorSelection: Double] = [:]
+    var oilsLocked: Bool = false
+    var terpenesLocked: Bool = false
+    var flavorSourceTab: FlavorSourceType = .terpenes
+    var flavorCompositionLocked: Bool = false
+    var terpeneVolumePPM: Double = 219.9
+    var flavorOilVolumePercent: Double = 0.481
+}

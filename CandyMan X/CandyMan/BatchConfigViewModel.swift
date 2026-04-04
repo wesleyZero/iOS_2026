@@ -52,6 +52,223 @@ final class BatchConfigViewModel {
     var batchActivated: Bool = false
     var showEspadaToast: Bool = false
 
+    // MARK: - Multi-Active
+
+    /// Whether multi-active mode is enabled. Only meaningful when trayCount > 1.
+    var multiActiveEnabled: Bool = false
+
+    /// Per-tray configurations. Kept in sync with trayCount when multiActiveEnabled.
+    var trayConfigs: [TrayConfig] = []
+
+    /// Which tray is currently being edited (0-based index).
+    var selectedTrayIndex: Int = 0
+
+    /// Snapshot of flat properties saved when multi-active is toggled ON,
+    /// restored when toggled OFF.
+    var savedSingleActiveConfig: TrayConfig?
+
+    /// Per-tray activation/measurement state for post-calculate mode.
+    /// Swapped in and out of flat viewModel properties when the user
+    /// switches trays in the multi-active output picker.
+    var trayActivationStates: [TrayActivationState] = []
+
+    /// Per-tray post-calculate state: activation flag, additional water,
+    /// HP activation measurements, equipment, corrections, and density.
+    /// Gelatin/sugar measurements remain global (shared across all trays).
+    struct TrayActivationState {
+        var activated: Bool = false
+        var additionalActiveWaterML: Double = 0.0
+
+        // HP activation readings
+        var hpActive: Double? = nil
+        var hpCitricAcid: Double? = nil
+        var hpKSorbate: Double? = nil
+        var hpActivationWater: Double? = nil
+        var hpAdditionalActivationWater: Double? = nil
+        var hpFlavorOils: Double? = nil
+        var hpColor: Double? = nil
+        var hpTerps: Double? = nil
+        var hpActivationTrayResidue: Double? = nil
+
+        // Activation equipment
+        var hpActivationTrayID: String? = nil
+        var hpActivationStirBarID: String? = nil
+        var hpActivationScaleID: String? = nil
+
+        // Activation corrections
+        var activationCorrections: [CorrectionEntry] = [
+            CorrectionEntry(label: ""),
+            CorrectionEntry(label: ""),
+        ]
+        var activationCorrectionsLocked: Bool = false
+
+        // Activation density
+        var densitySyringeCleanActive: Double? = nil
+        var densitySyringePlusActiveMass: Double? = nil
+        var densitySyringePlusActiveVol: Double? = nil
+    }
+
+    /// Snapshots current flat properties into a TrayConfig.
+    func captureFlatToTrayConfig(id: Int = 0) -> TrayConfig {
+        var config = TrayConfig(id: id)
+        config.selectedActive = selectedActive
+        config.activeConcentration = activeConcentration
+        config.units = units
+        config.lsdUgPerTab = lsdUgPerTab
+        config.gelatinPercentage = gelatinPercentage
+        config.selectedColors = selectedColors
+        config.colorsLocked = colorsLocked
+        config.colorVolumePercent = colorVolumePercent
+        config.colorCompositionLocked = colorCompositionLocked
+        config.selectedFlavors = selectedFlavors
+        config.oilsLocked = oilsLocked
+        config.terpenesLocked = terpenesLocked
+        config.flavorSourceTab = flavorSourceTab
+        config.flavorCompositionLocked = flavorCompositionLocked
+        config.terpeneVolumePPM = terpeneVolumePPM
+        config.flavorOilVolumePercent = flavorOilVolumePercent
+        return config
+    }
+
+    /// Loads a TrayConfig into the flat properties.
+    func applyTrayConfigToFlat(_ config: TrayConfig) {
+        selectedActive = config.selectedActive
+        activeConcentration = config.activeConcentration
+        units = config.units
+        lsdUgPerTab = config.lsdUgPerTab
+        gelatinPercentage = config.gelatinPercentage
+        selectedColors = config.selectedColors
+        colorsLocked = config.colorsLocked
+        colorVolumePercent = config.colorVolumePercent
+        colorCompositionLocked = config.colorCompositionLocked
+        selectedFlavors = config.selectedFlavors
+        oilsLocked = config.oilsLocked
+        terpenesLocked = config.terpenesLocked
+        flavorSourceTab = config.flavorSourceTab
+        flavorCompositionLocked = config.flavorCompositionLocked
+        terpeneVolumePPM = config.terpeneVolumePPM
+        flavorOilVolumePercent = config.flavorOilVolumePercent
+    }
+
+    /// Writes current flat properties into trayConfigs[selectedTrayIndex].
+    func saveCurrentTrayToConfigs() {
+        guard multiActiveEnabled, trayConfigs.indices.contains(selectedTrayIndex) else { return }
+        trayConfigs[selectedTrayIndex] = captureFlatToTrayConfig(id: selectedTrayIndex)
+    }
+
+    /// Switches the currently-edited tray: saves old tray, loads new tray.
+    /// In post-calculate mode, also swaps activation measurement state.
+    func loadTrayConfig(_ index: Int) {
+        guard multiActiveEnabled, trayConfigs.indices.contains(index) else { return }
+        saveCurrentTrayToConfigs()
+        if batchCalculated { saveCurrentActivationState() }
+        selectedTrayIndex = index
+        applyTrayConfigToFlat(trayConfigs[index])
+        if batchCalculated, trayActivationStates.indices.contains(index) {
+            applyActivationState(trayActivationStates[index])
+        }
+    }
+
+    /// Ensures trayConfigs array matches trayCount. Seeds new trays from current flat state.
+    func syncTrayConfigs() {
+        guard multiActiveEnabled else { return }
+        let count = trayCount
+
+        // Grow: add new TrayConfigs seeded from current flat values
+        while trayConfigs.count < count {
+            trayConfigs.append(captureFlatToTrayConfig(id: trayConfigs.count))
+        }
+
+        // Shrink: remove from end
+        if trayConfigs.count > count {
+            trayConfigs = Array(trayConfigs.prefix(count))
+        }
+
+        // Clamp selection
+        if selectedTrayIndex >= count {
+            selectedTrayIndex = max(0, count - 1)
+        }
+    }
+
+    /// Enables multi-active mode: saves current flat state as the single-active snapshot,
+    /// seeds all tray configs from it.
+    func enableMultiActive() {
+        savedSingleActiveConfig = captureFlatToTrayConfig()
+        multiActiveEnabled = true
+        extraGummies = 0
+        syncTrayConfigs()
+    }
+
+    /// Disables multi-active mode: restores the saved single-active flat state.
+    func disableMultiActive() {
+        saveCurrentTrayToConfigs()
+        if batchCalculated { saveCurrentActivationState() }
+        multiActiveEnabled = false
+        if let saved = savedSingleActiveConfig {
+            applyTrayConfigToFlat(saved)
+        }
+        trayConfigs = []
+        trayActivationStates = []
+        selectedTrayIndex = 0
+        savedSingleActiveConfig = nil
+    }
+
+    // MARK: - Per-Tray Activation State (Post-Calculate)
+
+    /// Snapshots the current flat activation-related properties into a TrayActivationState.
+    func captureActivationToState() -> TrayActivationState {
+        var state = TrayActivationState()
+        state.activated = batchActivated
+        state.additionalActiveWaterML = additionalActiveWaterML
+        state.hpActive = hpActive
+        state.hpCitricAcid = hpCitricAcid
+        state.hpKSorbate = hpKSorbate
+        state.hpActivationWater = hpActivationWater
+        state.hpAdditionalActivationWater = hpAdditionalActivationWater
+        state.hpFlavorOils = hpFlavorOils
+        state.hpColor = hpColor
+        state.hpTerps = hpTerps
+        state.hpActivationTrayResidue = hpActivationTrayResidue
+        state.hpActivationTrayID = hpActivationTrayID
+        state.hpActivationStirBarID = hpActivationStirBarID
+        state.hpActivationScaleID = hpActivationScaleID
+        state.activationCorrections = activationCorrections
+        state.activationCorrectionsLocked = activationCorrectionsLocked
+        state.densitySyringeCleanActive = densitySyringeCleanActive
+        state.densitySyringePlusActiveMass = densitySyringePlusActiveMass
+        state.densitySyringePlusActiveVol = densitySyringePlusActiveVol
+        return state
+    }
+
+    /// Loads a TrayActivationState into the flat activation-related properties.
+    func applyActivationState(_ state: TrayActivationState) {
+        batchActivated = state.activated
+        additionalActiveWaterML = state.additionalActiveWaterML
+        hpActive = state.hpActive
+        hpCitricAcid = state.hpCitricAcid
+        hpKSorbate = state.hpKSorbate
+        hpActivationWater = state.hpActivationWater
+        hpAdditionalActivationWater = state.hpAdditionalActivationWater
+        hpFlavorOils = state.hpFlavorOils
+        hpColor = state.hpColor
+        hpTerps = state.hpTerps
+        hpActivationTrayResidue = state.hpActivationTrayResidue
+        hpActivationTrayID = state.hpActivationTrayID
+        hpActivationStirBarID = state.hpActivationStirBarID
+        hpActivationScaleID = state.hpActivationScaleID
+        activationCorrections = state.activationCorrections
+        activationCorrectionsLocked = state.activationCorrectionsLocked
+        densitySyringeCleanActive = state.densitySyringeCleanActive
+        densitySyringePlusActiveMass = state.densitySyringePlusActiveMass
+        densitySyringePlusActiveVol = state.densitySyringePlusActiveVol
+    }
+
+    /// Writes current flat activation properties into trayActivationStates[selectedTrayIndex].
+    func saveCurrentActivationState() {
+        guard multiActiveEnabled, trayActivationStates.indices.contains(selectedTrayIndex) else { return }
+        trayActivationStates[selectedTrayIndex] = captureActivationToState()
+    }
+
     // MARK: - Template Tracking
 
     var activeTemplateID: PersistentIdentifier? = nil
@@ -133,6 +350,7 @@ final class BatchConfigViewModel {
         batchCalculated = false
         batchActivated = false
         showEspadaToast = false
+        trayActivationStates = []
         clearMeasurements()
     }
 
@@ -1123,5 +1341,12 @@ final class BatchConfigViewModel {
         colorsLocked            = false
         colorVolumePercent      = 0.581
         colorCompositionLocked  = false
+
+        // Multi-Active
+        multiActiveEnabled      = false
+        trayConfigs             = []
+        trayActivationStates    = []
+        selectedTrayIndex       = 0
+        savedSingleActiveConfig = nil
     }
 }
