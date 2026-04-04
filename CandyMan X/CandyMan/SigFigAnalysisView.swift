@@ -59,90 +59,113 @@ struct SigFigAnalysisView: View {
         viewModel.hpScaleResolution(for: viewModel.hpMoldsScaleID, systemConfig: systemConfig)
     }
 
-    // MARK: - Gelatin Mixture SF
-
-    private var sfExpGelatin: SigFigInfo? {
-        guard let gel = viewModel.hpGelatin else { return nil }
-        let tare = viewModel.hpSubstrateTare(systemConfig: systemConfig)
-        return SigFigs.sfOfDifference(gel, resA: substrateRes, minus: tare, resB: substrateRes)
-    }
+    // MARK: - Gelatin Mixture SF (order: Water → Gelatin)
 
     private var sfExpGelatinWater: SigFigInfo? {
-        guard let water = viewModel.hpGelatinWater, let gel = viewModel.hpGelatin else { return nil }
-        return SigFigs.sfOfDifference(water, resA: substrateRes, minus: gel, resB: substrateRes)
+        guard let water = viewModel.hpGelatinWater else { return nil }
+        let tare = viewModel.hpSubstrateTare(systemConfig: systemConfig)
+        return SigFigs.sfOfDifference(water, resA: substrateRes, minus: tare, resB: substrateRes)
+    }
+
+    private var sfExpGelatin: SigFigInfo? {
+        guard let gel = viewModel.hpGelatin, let water = viewModel.hpGelatinWater else { return nil }
+        return SigFigs.sfOfDifference(gel, resA: substrateRes, minus: water, resB: substrateRes)
     }
 
     private var sfExpGelatinMixTotal: SigFigInfo? {
-        guard let g = sfExpGelatin, let w = sfExpGelatinWater else { return nil }
-        let resultDP = SigFigs.addSubtract(g, w)
-        let value = (viewModel.hpIndividualGelatin(systemConfig: systemConfig) ?? 0)
-            + (viewModel.hpIndividualGelatinWater ?? 0)
+        guard let w = sfExpGelatinWater, let g = sfExpGelatin else { return nil }
+        let resultDP = SigFigs.addSubtract(w, g)
+        let value = (viewModel.hpIndividualGelatinWater(systemConfig: systemConfig) ?? 0)
+            + (viewModel.hpIndividualGelatin ?? 0)
         let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
         return SigFigs.count(from: str)
     }
 
-    // MARK: - Sugar Mixture SF
-
-    private var sfExpGranulated: SigFigInfo? {
-        guard let gran = viewModel.hpGranulated else { return nil }
-        let tare = viewModel.hpSugarMixTare(systemConfig: systemConfig)
-        return SigFigs.sfOfDifference(gran, resA: sugarRes, minus: tare, resB: sugarRes)
-    }
-
-    private var sfExpGlucoseSyrup: SigFigInfo? {
-        guard let gluc = viewModel.hpGlucoseSyrup, let gran = viewModel.hpGranulated else { return nil }
-        return SigFigs.sfOfDifference(gluc, resA: sugarRes, minus: gran, resB: sugarRes)
-    }
+    // MARK: - Sugar Mixture SF (order: Water → Glucose Syrup → Granulated)
 
     private var sfExpSugarWater: SigFigInfo? {
         guard let water = viewModel.hpSugarWater else { return nil }
-        let prev = viewModel.hpGlucoseSyrup ?? viewModel.hpGranulated
-        guard let p = prev else { return nil }
-        return SigFigs.sfOfDifference(water, resA: sugarRes, minus: p, resB: sugarRes)
+        let tare = viewModel.hpSugarMixTare(systemConfig: systemConfig)
+        return SigFigs.sfOfDifference(water, resA: sugarRes, minus: tare, resB: sugarRes)
+    }
+
+    private var sfExpGlucoseSyrup: SigFigInfo? {
+        guard let gluc = viewModel.hpGlucoseSyrup, let water = viewModel.hpSugarWater else { return nil }
+        return SigFigs.sfOfDifference(gluc, resA: sugarRes, minus: water, resB: sugarRes)
+    }
+
+    private var sfExpGranulated: SigFigInfo? {
+        guard let gran = viewModel.hpGranulated, let gluc = viewModel.hpGlucoseSyrup else { return nil }
+        return SigFigs.sfOfDifference(gran, resA: sugarRes, minus: gluc, resB: sugarRes)
     }
 
     private var sfExpSugarMixTotal: SigFigInfo? {
-        guard let g = sfExpGranulated, let gl = sfExpGlucoseSyrup, let w = sfExpSugarWater else { return nil }
-        let resultDP = SigFigs.addSubtract(g, gl, w)
-        let value = (viewModel.hpIndividualGranulated(systemConfig: systemConfig) ?? 0)
+        guard let w = sfExpSugarWater, let gl = sfExpGlucoseSyrup, let g = sfExpGranulated else { return nil }
+        let resultDP = SigFigs.addSubtract(w, gl, g)
+        let value = (viewModel.hpIndividualSugarWater(systemConfig: systemConfig) ?? 0)
             + (viewModel.hpIndividualGlucoseSyrup ?? 0)
-            + (viewModel.hpIndividualSugarWater ?? 0)
+            + (viewModel.hpIndividualGranulated ?? 0)
         let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
         return SigFigs.count(from: str)
     }
 
     // MARK: - Activation Mixture SF
 
-    private var sfExpCitricAcid: SigFigInfo? {
-        guard let citric = viewModel.hpCitricAcid else { return nil }
+    private var sfExpActive: SigFigInfo? {
+        guard let active = viewModel.hpActive else { return nil }
         let tare = viewModel.hpActivationTare(systemConfig: systemConfig)
-        return SigFigs.sfOfDifference(citric, resA: activationRes, minus: tare, resB: activationRes)
+        return SigFigs.sfOfDifference(active, resA: activationRes, minus: tare, resB: activationRes)
     }
 
-    private var sfExpActivationWater: SigFigInfo? {
-        guard let water = viewModel.hpActivationWater, let citric = viewModel.hpCitricAcid else { return nil }
-        return SigFigs.sfOfDifference(water, resA: activationRes, minus: citric, resB: activationRes)
+    private var sfExpCitricAcid: SigFigInfo? {
+        guard let citric = viewModel.hpCitricAcid, let active = viewModel.hpActive else { return nil }
+        return SigFigs.sfOfDifference(citric, resA: activationRes, minus: active, resB: activationRes)
     }
 
     private var sfExpKSorbate: SigFigInfo? {
-        guard let k = viewModel.hpKSorbate, let water = viewModel.hpActivationWater else { return nil }
-        return SigFigs.sfOfDifference(k, resA: activationRes, minus: water, resB: activationRes)
+        guard let k = viewModel.hpKSorbate, let citric = viewModel.hpCitricAcid else { return nil }
+        return SigFigs.sfOfDifference(k, resA: activationRes, minus: citric, resB: activationRes)
     }
 
-    private var sfExpFlavorOilsTerps: SigFigInfo? {
-        guard let flavor = viewModel.hpFlavorOilsTerpsActive, let k = viewModel.hpKSorbate else { return nil }
-        return SigFigs.sfOfDifference(flavor, resA: activationRes, minus: k, resB: activationRes)
+    private var sfExpActivationWater: SigFigInfo? {
+        guard let water = viewModel.hpActivationWater, let k = viewModel.hpKSorbate else { return nil }
+        return SigFigs.sfOfDifference(water, resA: activationRes, minus: k, resB: activationRes)
+    }
+
+    private var sfExpAdditionalActivationWater: SigFigInfo? {
+        guard let addl = viewModel.hpAdditionalActivationWater, let water = viewModel.hpActivationWater else { return nil }
+        return SigFigs.sfOfDifference(addl, resA: activationRes, minus: water, resB: activationRes)
+    }
+
+    private var sfExpFlavorOils: SigFigInfo? {
+        guard let oils = viewModel.hpFlavorOils, let addl = viewModel.hpAdditionalActivationWater else { return nil }
+        return SigFigs.sfOfDifference(oils, resA: activationRes, minus: addl, resB: activationRes)
+    }
+
+    private var sfExpColor: SigFigInfo? {
+        guard let color = viewModel.hpColor, let oils = viewModel.hpFlavorOils else { return nil }
+        return SigFigs.sfOfDifference(color, resA: activationRes, minus: oils, resB: activationRes)
+    }
+
+    private var sfExpTerps: SigFigInfo? {
+        guard let terps = viewModel.hpTerps, let color = viewModel.hpColor else { return nil }
+        return SigFigs.sfOfDifference(terps, resA: activationRes, minus: color, resB: activationRes)
     }
 
     private var sfExpActivationMixTotal: SigFigInfo? {
-        guard let c = sfExpCitricAcid, let w = sfExpActivationWater,
-              let k = sfExpKSorbate, let f = sfExpFlavorOilsTerps else { return nil }
-        let resultDP = SigFigs.addSubtract(c, w, k, f)
-        let v1: Double = viewModel.hpIndividualCitricAcid(systemConfig: systemConfig) ?? 0
-        let v2: Double = viewModel.hpIndividualActivationWater ?? 0
+        guard let a = sfExpActive, let c = sfExpCitricAcid, let k = sfExpKSorbate,
+              let w = sfExpActivationWater, let aw = sfExpAdditionalActivationWater,
+              let fo = sfExpFlavorOils, let co = sfExpColor, let t = sfExpTerps else { return nil }
+        let resultDP = SigFigs.addSubtract(a, c, k, w, aw, fo, co, t)
+        let v1: Double = viewModel.hpIndividualActive(systemConfig: systemConfig) ?? 0
+        let v2: Double = viewModel.hpIndividualCitricAcid ?? 0
         let v3: Double = viewModel.hpIndividualKSorbate ?? 0
-        let v4: Double = viewModel.hpIndividualFlavorOilsTerpsActive ?? 0
-        let value = v1 + v2 + v3 + v4
+        let v4: Double = viewModel.hpIndividualActivationWater ?? 0
+        let v5: Double = viewModel.hpIndividualAdditionalActivationWater ?? 0
+        let v6: Double = viewModel.hpIndividualFlavorOils ?? 0
+        let v6b: Double = viewModel.hpIndividualColor ?? 0
+        let v7: Double = viewModel.hpIndividualTerps ?? 0
+        let value = v1 + v2 + v3 + v4 + v5 + v6 + v6b + v7
         let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
         return SigFigs.count(from: str)
     }
@@ -431,7 +454,7 @@ struct SigFigAnalysisView: View {
     }
 
     private var valExpCitricAcidFraction: Double? {
-        guard let citric = viewModel.hpIndividualCitricAcid(systemConfig: systemConfig),
+        guard let citric = viewModel.hpIndividualCitricAcid,
               let mixMass = valGummyMixtureMass,
               mixMass > 0 else { return nil }
         return (citric / mixMass) * 100.0
@@ -445,7 +468,7 @@ struct SigFigAnalysisView: View {
     }
 
     private var valExpGelatinFraction: Double? {
-        guard let gelatin = viewModel.hpIndividualGelatin(systemConfig: systemConfig),
+        guard let gelatin = viewModel.hpIndividualGelatin,
               let mixMass = valGummyMixtureMass,
               mixMass > 0 else { return nil }
         return (gelatin / mixMass) * 100.0
@@ -720,45 +743,53 @@ struct SigFigAnalysisView: View {
 
                 // MARK: Gelatin Mixture
                 sfSubheader("Gelatin Mixture")
-                sfRow("Gelatin", info: sfExpGelatin, unit: "g",
-                      detail: subtractionDetail(label: "Gelatin Mass", reading: viewModel.hpGelatin, readingLabel: "Cumulative reading", tare: viewModel.hpSubstrateTare(systemConfig: systemConfig), tareLabel: "Container tare", res: substrateRes, result: sfExpGelatin))
                 sfRow("Water", info: sfExpGelatinWater, unit: "g",
-                      detail: consecutiveSubDetail(label: "Gelatin Water Mass", a: viewModel.hpGelatinWater, aLabel: "Reading after water", b: viewModel.hpGelatin, bLabel: "Reading after gelatin", res: substrateRes, result: sfExpGelatinWater))
+                      detail: subtractionDetail(label: "Gelatin Water Mass", reading: viewModel.hpGelatinWater, readingLabel: "Cumulative reading", tare: viewModel.hpSubstrateTare(systemConfig: systemConfig), tareLabel: "Container tare", res: substrateRes, result: sfExpGelatinWater))
+                sfRow("Gelatin", info: sfExpGelatin, unit: "g",
+                      detail: consecutiveSubDetail(label: "Gelatin Mass", a: viewModel.hpGelatin, aLabel: "Reading after gelatin", b: viewModel.hpGelatinWater, bLabel: "Reading after water", res: substrateRes, result: sfExpGelatin))
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 sfRow("Gelatin Mix Total", info: sfExpGelatinMixTotal, unit: "g", bold: true,
-                      detail: additionDetail(label: "Gelatin Mix Total", components: [("Gelatin", sfExpGelatin), ("Water", sfExpGelatinWater)], totalValue: sfExpGelatinMixTotal?.value, totalSF: sfExpGelatinMixTotal))
+                      detail: additionDetail(label: "Gelatin Mix Total", components: [("Water", sfExpGelatinWater), ("Gelatin", sfExpGelatin)], totalValue: sfExpGelatinMixTotal?.value, totalSF: sfExpGelatinMixTotal))
                     .background(CMTheme.totalRowBG)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
                 // MARK: Sugar Mixture
                 sfSubheader("Sugar Mixture")
-                sfRow("Granulated Sugar", info: sfExpGranulated, unit: "g",
-                      detail: subtractionDetail(label: "Granulated Sugar Mass", reading: viewModel.hpGranulated, readingLabel: "Cumulative reading", tare: viewModel.hpSugarMixTare(systemConfig: systemConfig), tareLabel: "Container tare", res: sugarRes, result: sfExpGranulated))
-                sfRow("Glucose Syrup", info: sfExpGlucoseSyrup, unit: "g",
-                      detail: consecutiveSubDetail(label: "Glucose Syrup Mass", a: viewModel.hpGlucoseSyrup, aLabel: "Reading after syrup", b: viewModel.hpGranulated, bLabel: "Reading after granulated", res: sugarRes, result: sfExpGlucoseSyrup))
                 sfRow("Water", info: sfExpSugarWater, unit: "g",
-                      detail: consecutiveSubDetail(label: "Sugar Water Mass", a: viewModel.hpSugarWater, aLabel: "Reading after water", b: viewModel.hpGlucoseSyrup ?? viewModel.hpGranulated, bLabel: "Previous reading", res: sugarRes, result: sfExpSugarWater))
+                      detail: subtractionDetail(label: "Sugar Water Mass", reading: viewModel.hpSugarWater, readingLabel: "Cumulative reading", tare: viewModel.hpSugarMixTare(systemConfig: systemConfig), tareLabel: "Container tare", res: sugarRes, result: sfExpSugarWater))
+                sfRow("Glucose Syrup", info: sfExpGlucoseSyrup, unit: "g",
+                      detail: consecutiveSubDetail(label: "Glucose Syrup Mass", a: viewModel.hpGlucoseSyrup, aLabel: "Reading after syrup", b: viewModel.hpSugarWater, bLabel: "Reading after water", res: sugarRes, result: sfExpGlucoseSyrup))
+                sfRow("Granulated Sugar", info: sfExpGranulated, unit: "g",
+                      detail: consecutiveSubDetail(label: "Granulated Sugar Mass", a: viewModel.hpGranulated, aLabel: "Reading after granulated", b: viewModel.hpGlucoseSyrup, bLabel: "Reading after syrup", res: sugarRes, result: sfExpGranulated))
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 sfRow("Sugar Mix Total", info: sfExpSugarMixTotal, unit: "g", bold: true,
-                      detail: additionDetail(label: "Sugar Mix Total", components: [("Granulated", sfExpGranulated), ("Glucose Syrup", sfExpGlucoseSyrup), ("Water", sfExpSugarWater)], totalValue: sfExpSugarMixTotal?.value, totalSF: sfExpSugarMixTotal))
+                      detail: additionDetail(label: "Sugar Mix Total", components: [("Water", sfExpSugarWater), ("Glucose Syrup", sfExpGlucoseSyrup), ("Granulated", sfExpGranulated)], totalValue: sfExpSugarMixTotal?.value, totalSF: sfExpSugarMixTotal))
                     .background(CMTheme.totalRowBG)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
                 // MARK: Activation Mixture
                 sfSubheader("Activation Mixture")
+                sfRow("Active", info: sfExpActive, unit: "g",
+                      detail: subtractionDetail(label: "Active Mass", reading: viewModel.hpActive, readingLabel: "Cumulative reading", tare: viewModel.hpActivationTare(systemConfig: systemConfig), tareLabel: "Container tare", res: activationRes, result: sfExpActive))
                 sfRow("Citric Acid", info: sfExpCitricAcid, unit: "g",
-                      detail: subtractionDetail(label: "Citric Acid Mass", reading: viewModel.hpCitricAcid, readingLabel: "Cumulative reading", tare: viewModel.hpActivationTare(systemConfig: systemConfig), tareLabel: "Container tare", res: activationRes, result: sfExpCitricAcid))
-                sfRow("Activation Water", info: sfExpActivationWater, unit: "g",
-                      detail: consecutiveSubDetail(label: "Activation Water Mass", a: viewModel.hpActivationWater, aLabel: "Reading after water", b: viewModel.hpCitricAcid, bLabel: "Reading after citric acid", res: activationRes, result: sfExpActivationWater))
-                sfRow("K Sorbate", info: sfExpKSorbate, unit: "g",
-                      detail: consecutiveSubDetail(label: "K Sorbate Mass", a: viewModel.hpKSorbate, aLabel: "Reading after K sorbate", b: viewModel.hpActivationWater, bLabel: "Reading after water", res: activationRes, result: sfExpKSorbate))
-                sfRow("Oils/Terps/Active", info: sfExpFlavorOilsTerps, unit: "g",
-                      detail: consecutiveSubDetail(label: "Flavor/Oils/Terps/Active Mass", a: viewModel.hpFlavorOilsTerpsActive, aLabel: "Reading after addition", b: viewModel.hpKSorbate, bLabel: "Reading after K sorbate", res: activationRes, result: sfExpFlavorOilsTerps))
+                      detail: consecutiveSubDetail(label: "Citric Acid Mass", a: viewModel.hpCitricAcid, aLabel: "Reading after citric acid", b: viewModel.hpActive, bLabel: "Reading after active", res: activationRes, result: sfExpCitricAcid))
+                sfRow("Potassium Sorbate", info: sfExpKSorbate, unit: "g",
+                      detail: consecutiveSubDetail(label: "K Sorbate Mass", a: viewModel.hpKSorbate, aLabel: "Reading after K sorbate", b: viewModel.hpCitricAcid, bLabel: "Reading after citric acid", res: activationRes, result: sfExpKSorbate))
+                sfRow("(Base) Activation Water", info: sfExpActivationWater, unit: "g",
+                      detail: consecutiveSubDetail(label: "Base Activation Water Mass", a: viewModel.hpActivationWater, aLabel: "Reading after base water", b: viewModel.hpKSorbate, bLabel: "Reading after K sorbate", res: activationRes, result: sfExpActivationWater))
+                sfRow("Additional Activation Water", info: sfExpAdditionalActivationWater, unit: "g",
+                      detail: consecutiveSubDetail(label: "Additional Activation Water Mass", a: viewModel.hpAdditionalActivationWater, aLabel: "Reading after additional water", b: viewModel.hpActivationWater, bLabel: "Reading after base water", res: activationRes, result: sfExpAdditionalActivationWater))
+                sfRow("Flavor Oils", info: sfExpFlavorOils, unit: "g",
+                      detail: consecutiveSubDetail(label: "Flavor Oils Mass", a: viewModel.hpFlavorOils, aLabel: "Reading after flavor oils", b: viewModel.hpAdditionalActivationWater, bLabel: "Reading after additional water", res: activationRes, result: sfExpFlavorOils))
+                sfRow("Color", info: sfExpColor, unit: "g",
+                      detail: consecutiveSubDetail(label: "Color Mass", a: viewModel.hpColor, aLabel: "Reading after color", b: viewModel.hpFlavorOils, bLabel: "Reading after flavor oils", res: activationRes, result: sfExpColor))
+                sfRow("Terps", info: sfExpTerps, unit: "g",
+                      detail: consecutiveSubDetail(label: "Terps Mass", a: viewModel.hpTerps, aLabel: "Reading after terps", b: viewModel.hpColor, bLabel: "Reading after color", res: activationRes, result: sfExpTerps))
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 sfRow("Activation Mix Total", info: sfExpActivationMixTotal, unit: "g", bold: true,
-                      detail: additionDetail(label: "Activation Mix Total", components: [("Citric Acid", sfExpCitricAcid), ("Water", sfExpActivationWater), ("K Sorbate", sfExpKSorbate), ("Oils/Terps/Active", sfExpFlavorOilsTerps)], totalValue: sfExpActivationMixTotal?.value, totalSF: sfExpActivationMixTotal))
+                      detail: additionDetail(label: "Activation Mix Total", components: [("Active", sfExpActive), ("Citric Acid", sfExpCitricAcid), ("K Sorbate", sfExpKSorbate), ("(Base) Water", sfExpActivationWater), ("Addl. Water", sfExpAdditionalActivationWater), ("Flavor Oils", sfExpFlavorOils), ("Color", sfExpColor), ("Terps", sfExpTerps)], totalValue: sfExpActivationMixTotal?.value, totalSF: sfExpActivationMixTotal))
                     .background(CMTheme.totalRowBG)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
@@ -821,11 +852,11 @@ struct SigFigAnalysisView: View {
                 sfRowFromInt("Concentration", value: valExpGummyConcentration, sf: sfExpGummyConcentration, unit: viewModel.units.rawValue,
                              detail: "Calculation: Experimental Concentration per Gummy\nOperation: Same chain as Active Lost, divided by molds filled\n\nThis calculation follows the same sig fig propagation as Active Lost.\nResult SF = min(SF of total active, SF of total losses, SF of gummy mix mass)\n         = \(sfExpGummyConcentration ?? 0) SF\n\nResult: \(valExpGummyConcentration.map { val in sfExpGummyConcentration.map { sf in SigFigs.format(val, sigFigs: sf) } ?? "—" } ?? "—") \(viewModel.units.rawValue)")
                 sfRowFromInt("Citric Acid", value: valExpCitricAcidFraction, sf: sfExpCitricAcidFraction, unit: "%",
-                             detail: massFractionDetail(label: "Citric Acid", componentMass: viewModel.hpIndividualCitricAcid(systemConfig: systemConfig), componentSF: sfExpCitricAcid?.sigFigs, mixMass: valGummyMixtureMass, mixSF: sfGummyMixtureMass?.sigFigs, resultVal: valExpCitricAcidFraction, resultSF: sfExpCitricAcidFraction, unit: "%"))
+                             detail: massFractionDetail(label: "Citric Acid", componentMass: viewModel.hpIndividualCitricAcid, componentSF: sfExpCitricAcid?.sigFigs, mixMass: valGummyMixtureMass, mixSF: sfGummyMixtureMass?.sigFigs, resultVal: valExpCitricAcidFraction, resultSF: sfExpCitricAcidFraction, unit: "%"))
                 sfRowFromInt("K Sorbate", value: valExpKSorbateFraction, sf: sfExpKSorbateFraction, unit: "%",
                              detail: massFractionDetail(label: "K Sorbate", componentMass: viewModel.hpIndividualKSorbate, componentSF: sfExpKSorbate?.sigFigs, mixMass: valGummyMixtureMass, mixSF: sfGummyMixtureMass?.sigFigs, resultVal: valExpKSorbateFraction, resultSF: sfExpKSorbateFraction, unit: "%"))
                 sfRowFromInt("Gelatin", value: valExpGelatinFraction, sf: sfExpGelatinFraction, unit: "%",
-                             detail: massFractionDetail(label: "Gelatin", componentMass: viewModel.hpIndividualGelatin(systemConfig: systemConfig), componentSF: sfExpGelatin?.sigFigs, mixMass: valGummyMixtureMass, mixSF: sfGummyMixtureMass?.sigFigs, resultVal: valExpGelatinFraction, resultSF: sfExpGelatinFraction, unit: "%"))
+                             detail: massFractionDetail(label: "Gelatin", componentMass: viewModel.hpIndividualGelatin, componentSF: sfExpGelatin?.sigFigs, mixMass: valGummyMixtureMass, mixSF: sfGummyMixtureMass?.sigFigs, resultVal: valExpGelatinFraction, resultSF: sfExpGelatinFraction, unit: "%"))
 
                 if !hasAnyData {
                     Text("Record high-precision weight measurements to populate sig fig analysis.")

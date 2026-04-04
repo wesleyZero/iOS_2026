@@ -551,8 +551,8 @@ struct BatchHPMeasurementsSection: View {
                 if let id = batch.hpSubstrateStirBarID { hpInfoRow("Stir Bar", value: id) }
                 if let id = batch.hpSubstrateScaleID { hpInfoRow("Scale", value: id) }
                 hpTareRow("Beaker Tare", value: batch.frozenSubstrateBeakerTare)
-                hpCumulativeRow("+ Gelatin", cumulative: batch.hpGelatin, individual: batch.hpIndividualGelatin)
                 hpCumulativeRow("+ Water", cumulative: batch.hpGelatinWater, individual: batch.hpIndividualGelatinWater)
+                hpCumulativeRow("+ Gelatin", cumulative: batch.hpGelatin, individual: batch.hpIndividualGelatin)
                 if let corrTotal = batch.correctionTotal(for: "gelatin") {
                     hpTotalRow("Corrections", value: corrTotal)
                 }
@@ -572,9 +572,9 @@ struct BatchHPMeasurementsSection: View {
                 if let id = batch.hpSugarMixStirBarID { hpInfoRow("Stir Bar", value: id) }
                 if let id = batch.hpSugarMixScaleID { hpInfoRow("Scale", value: id) }
                 hpTareRow("Beaker Tare", value: batch.frozenSugarMixBeakerTare)
-                hpCumulativeRow("+ Granulated Sugar", cumulative: batch.hpGranulated, individual: batch.hpIndividualGranulated)
-                hpCumulativeRow("+ Glucose Syrup", cumulative: batch.hpGlucoseSyrup, individual: batch.hpIndividualGlucoseSyrup)
                 hpCumulativeRow("+ Water", cumulative: batch.hpSugarWater, individual: batch.hpIndividualSugarWater)
+                hpCumulativeRow("+ Glucose Syrup", cumulative: batch.hpGlucoseSyrup, individual: batch.hpIndividualGlucoseSyrup)
+                hpCumulativeRow("+ Granulated Sugar", cumulative: batch.hpGranulated, individual: batch.hpIndividualGranulated)
                 if let corrTotal = batch.correctionTotal(for: "sugar") {
                     hpTotalRow("Corrections", value: corrTotal)
                 }
@@ -592,10 +592,14 @@ struct BatchHPMeasurementsSection: View {
                 if let id = batch.hpActivationTrayID { hpInfoRow("Activation Tray", value: id) }
                 if let id = batch.hpActivationScaleID { hpInfoRow("Scale", value: id) }
                 hpTareRow("Tray Tare", value: batch.frozenActivationTrayTare)
+                hpCumulativeRow("+ Active", cumulative: batch.hpActive, individual: batch.hpIndividualActive)
                 hpCumulativeRow("+ Citric Acid", cumulative: batch.hpCitricAcid, individual: batch.hpIndividualCitricAcid)
-                hpCumulativeRow("+ Activation Water", cumulative: batch.hpActivationWater, individual: batch.hpIndividualActivationWater)
-                hpCumulativeRow("+ K Sorbate", cumulative: batch.hpKSorbate, individual: batch.hpIndividualKSorbate)
-                hpCumulativeRow("+ Oils/Terps/Active", cumulative: batch.hpFlavorOilsTerpsActive, individual: batch.hpIndividualFlavorOilsTerpsActive)
+                hpCumulativeRow("+ Potassium Sorbate", cumulative: batch.hpKSorbate, individual: batch.hpIndividualKSorbate)
+                hpCumulativeRow("+ (Base) Activation Water", cumulative: batch.hpActivationWater, individual: batch.hpIndividualActivationWater)
+                hpCumulativeRow("+ Additional Activation Water", cumulative: batch.hpAdditionalActivationWater, individual: batch.hpIndividualAdditionalActivationWater)
+                hpCumulativeRow("+ Flavor Oils", cumulative: batch.hpFlavorOils, individual: batch.hpIndividualFlavorOils)
+                hpCumulativeRow("+ Color", cumulative: batch.hpColor, individual: batch.hpIndividualColor)
+                hpCumulativeRow("+ Terps", cumulative: batch.hpTerps, individual: batch.hpIndividualTerps)
                 hpCumulativeRow("Activation Tray Residue", cumulative: batch.hpActivationTrayResidue, individual: nil)
                 if let corrTotal = batch.correctionTotal(for: "activation") {
                     hpTotalRow("Corrections", value: corrTotal)
@@ -816,15 +820,23 @@ struct BatchHPMeasurementsSection: View {
                 "trayID": optStr(batch.hpActivationTrayID),
                 "scaleID": optStr(batch.hpActivationScaleID),
                 "trayTare": opt(batch.frozenActivationTrayTare),
+                "hpActive": opt(batch.hpActive),
                 "hpCitricAcid": opt(batch.hpCitricAcid),
-                "hpActivationWater": opt(batch.hpActivationWater),
                 "hpKSorbate": opt(batch.hpKSorbate),
-                "hpFlavorOilsTerpsActive": opt(batch.hpFlavorOilsTerpsActive),
+                "hpActivationWater": opt(batch.hpActivationWater),
+                "hpAdditionalActivationWater": opt(batch.hpAdditionalActivationWater),
+                "hpFlavorOils": opt(batch.hpFlavorOils),
+                "hpColor": opt(batch.hpColor),
+                "hpTerps": opt(batch.hpTerps),
                 "hpActivationTrayResidue": opt(batch.hpActivationTrayResidue),
+                "individualActive": opt(batch.hpIndividualActive),
                 "individualCitricAcid": opt(batch.hpIndividualCitricAcid),
-                "individualActivationWater": opt(batch.hpIndividualActivationWater),
                 "individualKSorbate": opt(batch.hpIndividualKSorbate),
-                "individualFlavorOilsTerps": opt(batch.hpIndividualFlavorOilsTerpsActive),
+                "individualActivationWater": opt(batch.hpIndividualActivationWater),
+                "individualAdditionalActivationWater": opt(batch.hpIndividualAdditionalActivationWater),
+                "individualFlavorOils": opt(batch.hpIndividualFlavorOils),
+                "individualColor": opt(batch.hpIndividualColor),
+                "individualTerps": opt(batch.hpIndividualTerps),
                 "mixTotal": opt(batch.hpActivationMixtureTotal),
             ],
             "transfer": [
@@ -913,9 +925,14 @@ struct BatchExperimentalData2Section: View {
     private var theoKSorbateMass: Double {
         sortedComponents.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
     }
-    private var theoFlavorOilsTerpsMass: Double {
-        let total = sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.massGrams }
-        return total - theoCitricAcidMass - theoActivationWaterMass - theoKSorbateMass
+    private var theoFlavorOilsMass: Double {
+        sortedComponents.filter { $0.group == "Activation Mix" && $0.category == "Flavor Oils" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoColorMass: Double {
+        sortedComponents.filter { $0.group == "Activation Mix" && $0.category == "Colors" }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoTerpsMass: Double {
+        sortedComponents.filter { $0.group == "Activation Mix" && $0.category == "Terpenes" }.reduce(0.0) { $0 + $1.massGrams }
     }
     private var theoActivationMixTotal: Double {
         sortedComponents.filter { $0.group == "Activation Mix" }.reduce(0.0) { $0 + $1.massGrams }
@@ -965,10 +982,14 @@ struct BatchExperimentalData2Section: View {
     private var expSugarWaterMass: Double? { batch.hpIndividualSugarWater }
     private var expSugarMixTotal: Double? { batch.hpSugarMixtureTotal }
 
+    private var expActiveMass: Double? { batch.hpIndividualActive }
     private var expCitricAcidMass: Double? { batch.hpIndividualCitricAcid }
-    private var expActivationWaterMass: Double? { batch.hpIndividualActivationWater }
     private var expKSorbateMass: Double? { batch.hpIndividualKSorbate }
-    private var expFlavorOilsTerpsMass: Double? { batch.hpIndividualFlavorOilsTerpsActive }
+    private var expActivationWaterMass: Double? { batch.hpIndividualActivationWater }
+    private var expAdditionalActivationWaterMass: Double? { batch.hpIndividualAdditionalActivationWater }
+    private var expFlavorOilsMass: Double? { batch.hpIndividualFlavorOils }
+    private var expColorMass: Double? { batch.hpIndividualColor }
+    private var expTerpsMass: Double? { batch.hpIndividualTerps }
     private var expActivationMixTotal: Double? { batch.hpActivationMixtureTotal }
 
     // MARK: - Losses
@@ -1107,8 +1128,8 @@ struct BatchExperimentalData2Section: View {
 
                 // MARK: Gelatin Mixture
                 comparisonSubheader("Gelatin Mixture")
-                comparisonRow("Gelatin", theoretical: theoGelatinMass, experimental: expGelatinMass)
                 comparisonRow("Water", theoretical: theoGelatinWaterMass, experimental: expGelatinWaterMass)
+                comparisonRow("Gelatin", theoretical: theoGelatinMass, experimental: expGelatinMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Gelatin Mix Total", theoretical: theoGelatinMixTotal, experimental: expGelatinMixTotal, bold: true)
                     .background(CMTheme.totalRowBG)
@@ -1117,9 +1138,9 @@ struct BatchExperimentalData2Section: View {
 
                 // MARK: Sugar Mixture
                 comparisonSubheader("Sugar Mixture")
-                comparisonRow("Granulated Sugar", theoretical: theoGranulatedMass, experimental: expGranulatedMass)
-                comparisonRow("Glucose Syrup", theoretical: theoGlucoseSyrupMass, experimental: expGlucoseSyrupMass)
                 comparisonRow("Water", theoretical: theoSugarWaterMass, experimental: expSugarWaterMass)
+                comparisonRow("Glucose Syrup", theoretical: theoGlucoseSyrupMass, experimental: expGlucoseSyrupMass)
+                comparisonRow("Granulated Sugar", theoretical: theoGranulatedMass, experimental: expGranulatedMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Sugar Mix Total", theoretical: theoSugarMixTotal, experimental: expSugarMixTotal, bold: true)
                     .background(CMTheme.totalRowBG)
@@ -1135,10 +1156,14 @@ struct BatchExperimentalData2Section: View {
 
                 // MARK: Activation Mixture
                 comparisonSubheader("Activation Mixture")
+                comparisonRow("Active", theoretical: 0, experimental: expActiveMass)
                 comparisonRow("Citric Acid", theoretical: theoCitricAcidMass, experimental: expCitricAcidMass)
-                comparisonRow("Activation Water", theoretical: theoActivationWaterMass, experimental: expActivationWaterMass)
-                comparisonRow("K Sorbate", theoretical: theoKSorbateMass, experimental: expKSorbateMass)
-                comparisonRow("Oils/Terps/Active", theoretical: theoFlavorOilsTerpsMass, experimental: expFlavorOilsTerpsMass)
+                comparisonRow("Potassium Sorbate", theoretical: theoKSorbateMass, experimental: expKSorbateMass)
+                comparisonRow("(Base) Activation Water", theoretical: theoActivationWaterMass, experimental: expActivationWaterMass)
+                comparisonRow("Additional Activation Water", theoretical: 0, experimental: expAdditionalActivationWaterMass)
+                comparisonRow("Flavor Oils", theoretical: theoFlavorOilsMass, experimental: expFlavorOilsMass)
+                comparisonRow("Color", theoretical: theoColorMass, experimental: expColorMass)
+                comparisonRow("Terps", theoretical: theoTerpsMass, experimental: expTerpsMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Activation Mix Total", theoretical: theoActivationMixTotal, experimental: expActivationMixTotal, bold: true)
                     .background(CMTheme.totalRowBG)
@@ -1547,10 +1572,13 @@ struct BatchExperimentalData2Section: View {
                 "theoTotal": theoSugarMixTotal, "expTotal": opt(expSugarMixTotal),
             ],
             "activationMixture": [
+                "expActive": opt(expActiveMass),
                 "theoCitricAcid": theoCitricAcidMass, "expCitricAcid": opt(expCitricAcidMass),
-                "theoActivationWater": theoActivationWaterMass, "expActivationWater": opt(expActivationWaterMass),
                 "theoKSorbate": theoKSorbateMass, "expKSorbate": opt(expKSorbateMass),
-                "theoOilsTerps": theoFlavorOilsTerpsMass, "expOilsTerps": opt(expFlavorOilsTerpsMass),
+                "theoActivationWater": theoActivationWaterMass, "expActivationWater": opt(expActivationWaterMass),
+                "expAdditionalActivationWater": opt(expAdditionalActivationWaterMass),
+                "theoFlavorOils": theoFlavorOilsMass, "expFlavorOils": opt(expFlavorOilsMass),
+                "theoTerps": theoTerpsMass, "expTerps": opt(expTerpsMass),
                 "theoTotal": theoActivationMixTotal, "expTotal": opt(expActivationMixTotal),
             ],
             "densities": [
@@ -1614,89 +1642,112 @@ struct BatchSigFigSection: View {
         batch.frozenMeasurementResolution(for: batch.frozenMoldsScaleResolution)
     }
 
-    // MARK: - Gelatin Mixture SF
-
-    private var sfExpGelatin: SigFigInfo? {
-        guard let gel = batch.hpGelatin else { return nil }
-        let tare = batch.frozenSubstrateBeakerTare ?? 0
-        return SigFigs.sfOfDifference(gel, resA: substrateRes, minus: tare, resB: substrateRes)
-    }
+    // MARK: - Gelatin Mixture SF (order: Water → Gelatin)
 
     private var sfExpGelatinWater: SigFigInfo? {
-        guard let water = batch.hpGelatinWater, let gel = batch.hpGelatin else { return nil }
-        return SigFigs.sfOfDifference(water, resA: substrateRes, minus: gel, resB: substrateRes)
+        guard let water = batch.hpGelatinWater else { return nil }
+        let tare = batch.frozenSubstrateBeakerTare ?? 0
+        return SigFigs.sfOfDifference(water, resA: substrateRes, minus: tare, resB: substrateRes)
+    }
+
+    private var sfExpGelatin: SigFigInfo? {
+        guard let gel = batch.hpGelatin, let water = batch.hpGelatinWater else { return nil }
+        return SigFigs.sfOfDifference(gel, resA: substrateRes, minus: water, resB: substrateRes)
     }
 
     private var sfExpGelatinMixTotal: SigFigInfo? {
-        guard let g = sfExpGelatin, let w = sfExpGelatinWater else { return nil }
-        let resultDP = SigFigs.addSubtract(g, w)
-        let value = (batch.hpIndividualGelatin ?? 0) + (batch.hpIndividualGelatinWater ?? 0)
+        guard let w = sfExpGelatinWater, let g = sfExpGelatin else { return nil }
+        let resultDP = SigFigs.addSubtract(w, g)
+        let value = (batch.hpIndividualGelatinWater ?? 0) + (batch.hpIndividualGelatin ?? 0)
         let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
         return SigFigs.count(from: str)
     }
 
-    // MARK: - Sugar Mixture SF
-
-    private var sfExpGranulated: SigFigInfo? {
-        guard let gran = batch.hpGranulated else { return nil }
-        let tare = batch.frozenSugarMixBeakerTare ?? 0
-        return SigFigs.sfOfDifference(gran, resA: sugarRes, minus: tare, resB: sugarRes)
-    }
-
-    private var sfExpGlucoseSyrup: SigFigInfo? {
-        guard let gluc = batch.hpGlucoseSyrup, let gran = batch.hpGranulated else { return nil }
-        return SigFigs.sfOfDifference(gluc, resA: sugarRes, minus: gran, resB: sugarRes)
-    }
+    // MARK: - Sugar Mixture SF (order: Water → Glucose Syrup → Granulated)
 
     private var sfExpSugarWater: SigFigInfo? {
         guard let water = batch.hpSugarWater else { return nil }
-        let prev = batch.hpGlucoseSyrup ?? batch.hpGranulated
-        guard let p = prev else { return nil }
-        return SigFigs.sfOfDifference(water, resA: sugarRes, minus: p, resB: sugarRes)
+        let tare = batch.frozenSugarMixBeakerTare ?? 0
+        return SigFigs.sfOfDifference(water, resA: sugarRes, minus: tare, resB: sugarRes)
+    }
+
+    private var sfExpGlucoseSyrup: SigFigInfo? {
+        guard let gluc = batch.hpGlucoseSyrup, let water = batch.hpSugarWater else { return nil }
+        return SigFigs.sfOfDifference(gluc, resA: sugarRes, minus: water, resB: sugarRes)
+    }
+
+    private var sfExpGranulated: SigFigInfo? {
+        guard let gran = batch.hpGranulated, let gluc = batch.hpGlucoseSyrup else { return nil }
+        return SigFigs.sfOfDifference(gran, resA: sugarRes, minus: gluc, resB: sugarRes)
     }
 
     private var sfExpSugarMixTotal: SigFigInfo? {
-        guard let g = sfExpGranulated, let gl = sfExpGlucoseSyrup, let w = sfExpSugarWater else { return nil }
-        let resultDP = SigFigs.addSubtract(g, gl, w)
-        let value = (batch.hpIndividualGranulated ?? 0)
+        guard let w = sfExpSugarWater, let gl = sfExpGlucoseSyrup, let g = sfExpGranulated else { return nil }
+        let resultDP = SigFigs.addSubtract(w, gl, g)
+        let value = (batch.hpIndividualSugarWater ?? 0)
             + (batch.hpIndividualGlucoseSyrup ?? 0)
-            + (batch.hpIndividualSugarWater ?? 0)
+            + (batch.hpIndividualGranulated ?? 0)
         let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
         return SigFigs.count(from: str)
     }
 
     // MARK: - Activation Mixture SF
 
-    private var sfExpCitricAcid: SigFigInfo? {
-        guard let citric = batch.hpCitricAcid else { return nil }
+    private var sfExpActive: SigFigInfo? {
+        guard let active = batch.hpActive else { return nil }
         let tare = batch.frozenActivationTrayTare ?? 0
-        return SigFigs.sfOfDifference(citric, resA: activationRes, minus: tare, resB: activationRes)
+        return SigFigs.sfOfDifference(active, resA: activationRes, minus: tare, resB: activationRes)
     }
 
-    private var sfExpActivationWater: SigFigInfo? {
-        guard let water = batch.hpActivationWater, let citric = batch.hpCitricAcid else { return nil }
-        return SigFigs.sfOfDifference(water, resA: activationRes, minus: citric, resB: activationRes)
+    private var sfExpCitricAcid: SigFigInfo? {
+        guard let citric = batch.hpCitricAcid, let active = batch.hpActive else { return nil }
+        return SigFigs.sfOfDifference(citric, resA: activationRes, minus: active, resB: activationRes)
     }
 
     private var sfExpKSorbate: SigFigInfo? {
-        guard let k = batch.hpKSorbate, let water = batch.hpActivationWater else { return nil }
-        return SigFigs.sfOfDifference(k, resA: activationRes, minus: water, resB: activationRes)
+        guard let k = batch.hpKSorbate, let citric = batch.hpCitricAcid else { return nil }
+        return SigFigs.sfOfDifference(k, resA: activationRes, minus: citric, resB: activationRes)
     }
 
-    private var sfExpFlavorOilsTerps: SigFigInfo? {
-        guard let flavor = batch.hpFlavorOilsTerpsActive, let k = batch.hpKSorbate else { return nil }
-        return SigFigs.sfOfDifference(flavor, resA: activationRes, minus: k, resB: activationRes)
+    private var sfExpActivationWater: SigFigInfo? {
+        guard let water = batch.hpActivationWater, let k = batch.hpKSorbate else { return nil }
+        return SigFigs.sfOfDifference(water, resA: activationRes, minus: k, resB: activationRes)
+    }
+
+    private var sfExpAdditionalActivationWater: SigFigInfo? {
+        guard let addl = batch.hpAdditionalActivationWater, let water = batch.hpActivationWater else { return nil }
+        return SigFigs.sfOfDifference(addl, resA: activationRes, minus: water, resB: activationRes)
+    }
+
+    private var sfExpFlavorOils: SigFigInfo? {
+        guard let oils = batch.hpFlavorOils, let addl = batch.hpAdditionalActivationWater else { return nil }
+        return SigFigs.sfOfDifference(oils, resA: activationRes, minus: addl, resB: activationRes)
+    }
+
+    private var sfExpColor: SigFigInfo? {
+        guard let color = batch.hpColor, let oils = batch.hpFlavorOils else { return nil }
+        return SigFigs.sfOfDifference(color, resA: activationRes, minus: oils, resB: activationRes)
+    }
+
+    private var sfExpTerps: SigFigInfo? {
+        guard let terps = batch.hpTerps, let color = batch.hpColor else { return nil }
+        return SigFigs.sfOfDifference(terps, resA: activationRes, minus: color, resB: activationRes)
     }
 
     private var sfExpActivationMixTotal: SigFigInfo? {
-        guard let c = sfExpCitricAcid, let w = sfExpActivationWater,
-              let k = sfExpKSorbate, let f = sfExpFlavorOilsTerps else { return nil }
-        let resultDP = SigFigs.addSubtract(c, w, k, f)
-        let v1: Double = batch.hpIndividualCitricAcid ?? 0
-        let v2: Double = batch.hpIndividualActivationWater ?? 0
+        guard let a = sfExpActive, let c = sfExpCitricAcid, let k = sfExpKSorbate,
+              let w = sfExpActivationWater, let aw = sfExpAdditionalActivationWater,
+              let fo = sfExpFlavorOils, let co = sfExpColor, let t = sfExpTerps else { return nil }
+        let resultDP = SigFigs.addSubtract(a, c, k, w, aw, fo, co, t)
+        let v1: Double = batch.hpIndividualActive ?? 0
+        let v2: Double = batch.hpIndividualCitricAcid ?? 0
         let v3: Double = batch.hpIndividualKSorbate ?? 0
-        let v4: Double = batch.hpIndividualFlavorOilsTerpsActive ?? 0
-        let value = v1 + v2 + v3 + v4
+        let v4: Double = batch.hpIndividualActivationWater ?? 0
+        let v5: Double = batch.hpIndividualAdditionalActivationWater ?? 0
+        let v6: Double = batch.hpIndividualFlavorOils ?? 0
+        let v6b: Double = batch.hpIndividualColor ?? 0
+        let v7: Double = batch.hpIndividualTerps ?? 0
+        let value = v1 + v2 + v3 + v4 + v5 + v6 + v6b + v7
         let str = SigFigs.formatDP(value, decimalPlaces: resultDP)
         return SigFigs.count(from: str)
     }
@@ -1980,8 +2031,8 @@ struct BatchSigFigSection: View {
 
                 // MARK: Gelatin Mixture
                 sfSubheader("Gelatin Mixture")
-                sfRow("Gelatin", info: sfExpGelatin, unit: "g")
                 sfRow("Water", info: sfExpGelatinWater, unit: "g")
+                sfRow("Gelatin", info: sfExpGelatin, unit: "g")
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 sfRow("Gelatin Mix Total", info: sfExpGelatinMixTotal, unit: "g", bold: true)
                     .background(CMTheme.totalRowBG)
@@ -1990,9 +2041,9 @@ struct BatchSigFigSection: View {
 
                 // MARK: Sugar Mixture
                 sfSubheader("Sugar Mixture")
-                sfRow("Granulated Sugar", info: sfExpGranulated, unit: "g")
-                sfRow("Glucose Syrup", info: sfExpGlucoseSyrup, unit: "g")
                 sfRow("Water", info: sfExpSugarWater, unit: "g")
+                sfRow("Glucose Syrup", info: sfExpGlucoseSyrup, unit: "g")
+                sfRow("Granulated Sugar", info: sfExpGranulated, unit: "g")
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 sfRow("Sugar Mix Total", info: sfExpSugarMixTotal, unit: "g", bold: true)
                     .background(CMTheme.totalRowBG)
@@ -2001,10 +2052,14 @@ struct BatchSigFigSection: View {
 
                 // MARK: Activation Mixture
                 sfSubheader("Activation Mixture")
+                sfRow("Active", info: sfExpActive, unit: "g")
                 sfRow("Citric Acid", info: sfExpCitricAcid, unit: "g")
-                sfRow("Activation Water", info: sfExpActivationWater, unit: "g")
-                sfRow("K Sorbate", info: sfExpKSorbate, unit: "g")
-                sfRow("Oils/Terps/Active", info: sfExpFlavorOilsTerps, unit: "g")
+                sfRow("Potassium Sorbate", info: sfExpKSorbate, unit: "g")
+                sfRow("(Base) Activation Water", info: sfExpActivationWater, unit: "g")
+                sfRow("Additional Activation Water", info: sfExpAdditionalActivationWater, unit: "g")
+                sfRow("Flavor Oils", info: sfExpFlavorOils, unit: "g")
+                sfRow("Color", info: sfExpColor, unit: "g")
+                sfRow("Terps", info: sfExpTerps, unit: "g")
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 sfRow("Activation Mix Total", info: sfExpActivationMixTotal, unit: "g", bold: true)
                     .background(CMTheme.totalRowBG)

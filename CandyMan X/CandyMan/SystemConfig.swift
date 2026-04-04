@@ -1629,10 +1629,11 @@ final class SystemConfig {
 
     // MARK: - Developer Mode
 
-    var developerMode: Bool = true
+    var developerMode: Bool = false
     var expandDetailSectionsByDefault: Bool = false
-    var syntheticDataSet1Enabled: Bool = true
-    var syntheticMeasurementsEnabled: Bool = true
+    var syntheticDataSet1Enabled: Bool = false
+    var syntheticDataSet2Enabled: Bool = false
+    var syntheticMeasurementsEnabled: Bool = false
 
     /// Applies the "Tropical Punch" real batch dataset when developer mode is toggled on.
     func applyDevMode(to viewModel: BatchConfigViewModel) {
@@ -1778,28 +1779,34 @@ final class SystemConfig {
         viewModel.hpActivationScaleID = "A"
 
         // Gelatin section (substrate beaker tare = 160.76)
-        // Theo gelatin = 10.034g → reading = tare + gelatin ≈ 171.164
-        // Theo water   = 30.103g → reading = prev + water   ≈ 201.267
-        viewModel.hpGelatin = 171.28       // +0.116 over theo → gelatin mass ~10.150 (+1.2%)
-        viewModel.hpGelatinWater = 201.55  // water mass = 201.55 - 171.28 = 30.270 (+0.6%)
+        // New order: Water first, then Gelatin
+        // Theo water   = 30.103g → reading = tare + water   ≈ 190.863
+        // Theo gelatin = 10.034g → reading = prev + gelatin  ≈ 200.897
+        viewModel.hpGelatinWater = 191.03  // water mass = 191.03 - 160.76 = 30.270 (+0.6%)
+        viewModel.hpGelatin = 201.55       // gelatin mass = 201.55 - 191.03 = 10.520 (+4.8%)
 
         // Sugar section (sugar beaker tare = 65.38)
-        // Theo granulated = 60.324g → reading = tare + gran ≈ 125.682
-        // Theo glucose    = 60.324g → reading = prev + gluc ≈ 186.007
-        // Theo water      = 22.535g → reading = prev + wat  ≈ 208.542
-        viewModel.hpGranulated = 125.95    // gran mass = 60.592 (+0.4%)
-        viewModel.hpGlucoseSyrup = 186.80  // gluc mass = 186.80 - 125.95 = 60.850 (+0.9%)
-        viewModel.hpSugarWater = 209.10    // water mass = 209.10 - 186.80 = 22.300 (-1.0%)
+        // New order: Water first, then Glucose Syrup, then Granulated
+        // Theo water      = 22.535g → reading = tare + wat  ≈ 87.915
+        // Theo glucose    = 60.324g → reading = prev + gluc ≈ 148.239
+        // Theo granulated = 60.324g → reading = prev + gran ≈ 208.563
+        viewModel.hpSugarWater = 87.68     // water mass = 87.68 - 65.38 = 22.300 (-1.0%)
+        viewModel.hpGlucoseSyrup = 148.53  // gluc mass = 148.53 - 87.68 = 60.850 (+0.9%)
+        viewModel.hpGranulated = 209.10    // gran mass = 209.10 - 148.53 = 60.570 (+0.4%)
 
         // Activation section (activation beaker tare = 8.58)
         // Theo citric acid = 1.862g → reading = tare + citric ≈ 10.422
         // Theo activ water = 4.467g → reading = prev + water  ≈ 14.889
         // Theo K sorbate   = 0.186g → reading = prev + ksorb  ≈ 15.075
         // Theo oils/terps  = 1.880g → reading = prev + rest   ≈ 16.955
+        viewModel.hpActive = 8.58          // active mass = 0 (placeholder)
         viewModel.hpCitricAcid = 10.44     // citric mass = 1.880 (+1.0%)
-        viewModel.hpActivationWater = 14.95 // water mass = 14.95 - 10.44 = 4.510 (+1.0%)
-        viewModel.hpKSorbate = 15.14       // ksorb mass = 15.14 - 14.95 = 0.190 (+2.2%)
-        viewModel.hpFlavorOilsTerpsActive = 17.05 // oils/terps mass = 17.05 - 15.14 = 1.910 (+1.6%)
+        viewModel.hpKSorbate = 10.63       // ksorb mass = 0.190 (+2.2%)
+        viewModel.hpActivationWater = 15.14 // base water mass = 4.510 (+1.0%)
+        viewModel.hpAdditionalActivationWater = 15.14 // additional water mass = 0
+        viewModel.hpFlavorOils = 16.50     // oils mass = 1.360
+        viewModel.hpColor = 16.50          // color mass = 0.000 (no color in this batch)
+        viewModel.hpTerps = 17.05          // terps mass = 0.550
         viewModel.hpActivationTrayResidue = 0.0
 
         // Transfer readings
@@ -1846,10 +1853,14 @@ final class SystemConfig {
         viewModel.hpGranulated = nil
         viewModel.hpGlucoseSyrup = nil
         viewModel.hpSugarWater = nil
+        viewModel.hpActive = nil
         viewModel.hpCitricAcid = nil
-        viewModel.hpActivationWater = nil
         viewModel.hpKSorbate = nil
-        viewModel.hpFlavorOilsTerpsActive = nil
+        viewModel.hpActivationWater = nil
+        viewModel.hpAdditionalActivationWater = nil
+        viewModel.hpFlavorOils = nil
+        viewModel.hpColor = nil
+        viewModel.hpTerps = nil
         viewModel.hpActivationTrayResidue = nil
         viewModel.hpSubstrateBeakerID = nil
         viewModel.hpSugarMixBeakerID = nil
@@ -1859,6 +1870,152 @@ final class SystemConfig {
         viewModel.hpActivationScaleID = nil
         viewModel.hpSubstrateSugarTransfer = nil
         viewModel.hpSubstrateActivationTransfer = nil
+    }
+
+    /// Fills batch configuration and HP measurement fields with synthetic data set 2.
+    func applySyntheticDataSet2(to viewModel: BatchConfigViewModel) {
+        // Shape & quantity — 1 tray of Star (28 wells)
+        viewModel.selectedShape = .star
+        viewModel.trayCount = 1
+        viewModel.extraGummies = 0
+
+        // Active substance — MDMA 10 mg/gummy
+        viewModel.selectedActive = .mdma
+        viewModel.units = .mg
+        viewModel.activeConcentration = 10.0
+        viewModel.additionalActiveWaterML = 3.043
+
+        // Gelatin
+        viewModel.gelatinPercentage = 6.0
+
+        // Flavor oils: Blueberry 20%, Cranberry 60%, Strawberry 20%
+        viewModel.selectedFlavors = [:]
+        viewModel.oilsLocked = false
+        viewModel.terpenesLocked = false
+        viewModel.flavorCompositionLocked = false
+        viewModel.selectedFlavors[.oil(.blueberry)] = 20.0
+        viewModel.selectedFlavors[.oil(.cranberry)] = 60.0
+        viewModel.selectedFlavors[.oil(.strawberry)] = 20.0
+        viewModel.flavorOilVolumePercent = 0.6
+
+        // Terpenes: Blueberry Cake 100%
+        viewModel.selectedFlavors[.terpene(.blueberryCake)] = 100.0
+        viewModel.terpeneVolumePPM = 450.0
+
+        // Colors: Coral 100%
+        viewModel.selectedColors = [:]
+        viewModel.colorsLocked = false
+        viewModel.colorCompositionLocked = false
+        viewModel.selectedColors[.coral] = 100.0
+        viewModel.colorVolumePercent = 0.6
+
+        // Lock all selections
+        viewModel.oilsLocked = true
+        viewModel.terpenesLocked = true
+        viewModel.flavorCompositionLocked = true
+        viewModel.colorsLocked = true
+        viewModel.colorCompositionLocked = true
+
+        // Auto-calculate the batch
+        viewModel.batchCalculated = true
+        viewModel.prePopulateRecommendedScales(systemConfig: self)
+
+        // HP mode
+        viewModel.highPrecisionMode = true
+
+        // Gelatin section (tare = 103.00 + 7.161 = 110.161)
+        // New order: Water first, then Gelatin
+        viewModel.hpSubstrateBeakerID = "Beaker 250ml A"
+        viewModel.hpSubstrateStirBarID = "Circumcised"
+        viewModel.hpSubstrateScaleID = "B"
+        viewModel.hpGelatinWater = 132.52  // water mass = 132.52 - 110.161 = 22.359
+        viewModel.hpGelatin = 140.0        // gelatin mass = 140.0 - 132.52 = 7.480
+
+        // Sugar section (tare = 98.03, no stir bar)
+        // New order: Water, Glucose Syrup, Granulated
+        viewModel.hpSugarMixBeakerID = "Beaker 250ml B"
+        viewModel.hpSugarMixStirBarID = nil
+        viewModel.hpSugarMixScaleID = "B"
+        viewModel.hpSugarWater = 106.90    // water mass = 106.90 - 98.03 = 8.870
+        viewModel.hpGlucoseSyrup = 142.25  // gluc mass = 142.25 - 106.90 = 35.350
+        viewModel.hpGranulated = 184.33    // gran mass = 184.33 - 142.25 = 42.080
+
+        // Activation section
+        viewModel.hpActivationTrayID = "Beaker 10ml A"
+        viewModel.hpActivationScaleID = "A"
+        viewModel.hpActive = 8.580
+        viewModel.hpCitricAcid = 9.788
+        viewModel.hpKSorbate = 9.911
+        viewModel.hpActivationWater = 12.256
+        viewModel.hpAdditionalActivationWater = 12.256
+        viewModel.hpFlavorOils = 13.200
+        viewModel.hpColor = 13.200         // color mass = 0.000 (no color in this batch)
+        viewModel.hpTerps = 13.757
+        viewModel.hpActivationTrayResidue = 8.715
+
+        // Transfer readings
+        viewModel.hpTransferScaleID = "B"
+        viewModel.hpSubstrateSugarTransfer = 211.55
+        viewModel.hpSubstrateActivationTransfer = 218.76
+
+        // Substrate beaker residue
+        viewModel.weightBeakerResidue = 105.0
+
+        // Syringe / density
+        viewModel.hpTransferSyringeID = nil
+        viewModel.weightSyringeEmpty = nil
+        viewModel.weightSyringeWithMix = 201.81
+        viewModel.volumeSyringeGummyMix = 50.0
+        viewModel.weightSyringeResidue = 137.06
+
+        // Molds
+        viewModel.hpMoldsTrayID = "Star"
+        viewModel.hpMoldsScaleID = "B"
+        viewModel.weightMoldsFilled = 26.0
+        viewModel.extraGummyMixGrams = 0.0
+        viewModel.weightTrayClean = nil
+        viewModel.weightTrayPlusResidue = 53.83
+    }
+
+    /// Clears synthetic data set 2 HP fields from the view model.
+    func clearSyntheticDataSet2(from viewModel: BatchConfigViewModel) {
+        viewModel.hpGelatin = nil
+        viewModel.hpGelatinWater = nil
+        viewModel.hpGranulated = nil
+        viewModel.hpGlucoseSyrup = nil
+        viewModel.hpSugarWater = nil
+        viewModel.hpActive = nil
+        viewModel.hpCitricAcid = nil
+        viewModel.hpKSorbate = nil
+        viewModel.hpActivationWater = nil
+        viewModel.hpAdditionalActivationWater = nil
+        viewModel.hpFlavorOils = nil
+        viewModel.hpColor = nil
+        viewModel.hpTerps = nil
+        viewModel.hpActivationTrayResidue = nil
+        viewModel.hpSubstrateBeakerID = nil
+        viewModel.hpSugarMixBeakerID = nil
+        viewModel.hpActivationTrayID = nil
+        viewModel.hpSubstrateStirBarID = nil
+        viewModel.hpSugarMixStirBarID = nil
+        viewModel.hpSubstrateScaleID = nil
+        viewModel.hpSugarMixScaleID = nil
+        viewModel.hpActivationScaleID = nil
+        viewModel.hpSubstrateSugarTransfer = nil
+        viewModel.hpSubstrateActivationTransfer = nil
+        viewModel.hpTransferScaleID = nil
+        viewModel.hpTransferSyringeID = nil
+        viewModel.hpMoldsTrayID = nil
+        viewModel.hpMoldsScaleID = nil
+        viewModel.weightSyringeEmpty = nil
+        viewModel.weightSyringeWithMix = nil
+        viewModel.volumeSyringeGummyMix = nil
+        viewModel.weightSyringeResidue = nil
+        viewModel.weightMoldsFilled = nil
+        viewModel.extraGummyMixGrams = nil
+        viewModel.weightBeakerResidue = nil
+        viewModel.weightTrayClean = nil
+        viewModel.weightTrayPlusResidue = nil
     }
 
     func setSpec(_ spec: MoldSpec, for shape: GummyShape) {

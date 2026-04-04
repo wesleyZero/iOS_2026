@@ -53,8 +53,14 @@ struct ExperimentalData2View: View {
     private var theoKSorbateMass: Double {
         result.activationMix.components.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
     }
-    private var theoFlavorOilsTerpsMass: Double {
-        result.activationMix.totalMassGrams - theoCitricAcidMass - theoActivationWaterMass - theoKSorbateMass
+    private var theoFlavorOilsMass: Double {
+        result.activationMix.components.filter { $0.activationCategory == .flavorOil }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoColorMass: Double {
+        result.activationMix.components.filter { $0.activationCategory == .color }.reduce(0.0) { $0 + $1.massGrams }
+    }
+    private var theoTerpsMass: Double {
+        result.activationMix.components.filter { $0.activationCategory == .terpene }.reduce(0.0) { $0 + $1.massGrams }
     }
     private var theoActivationMixTotal: Double { result.activationMix.totalMassGrams }
 
@@ -133,12 +139,10 @@ struct ExperimentalData2View: View {
         return residue - tare
     }
 
-    /// Net gummy mixture mass from HP flow (activation transfer − substrate tare).
+    /// Net gummy mixture mass from HP flow (activation transfer − substrate beaker+stir bar tare).
     private var hpGummyMixtureMass: Double? {
         guard let transfer = viewModel.hpSubstrateActivationTransfer else { return nil }
-        let containerID = viewModel.hpSubstrateBeakerID
-            ?? systemConfig.recommendedBeaker(forVolumeML: result.gelatinMix.totalVolumeML + result.sugarMix.totalVolumeML)?.id
-        let tare = containerID.map { systemConfig.containerTare(for: $0) } ?? 0
+        let tare = viewModel.hpSubstrateTare(systemConfig: systemConfig)
         return transfer - tare
     }
 
@@ -166,17 +170,17 @@ struct ExperimentalData2View: View {
 
     // MARK: - Gummy Properties (Theoretical)
 
-    /// Theoretical volume per gummy = mold cavity volume (mL).
-    private var theoGummyVolume: Double {
-        systemConfig.spec(for: viewModel.selectedShape).volumeML
-    }
-
-    /// Theoretical mass per gummy = total batch mass (no overage) / total gummies.
-    /// Uses vBase (neat target volume) with the theoretical final mix density.
+    /// Theoretical mass per gummy = total batch mass / total gummies.
     private var theoGummyMass: Double {
         let gummies = Double(viewModel.totalGummies(using: systemConfig))
         guard gummies > 0 else { return 0 }
         return result.totalMassGrams / gummies
+    }
+
+    /// Theoretical volume per gummy = theoGummyMass / estimated final mix density from settings.
+    private var theoGummyVolume: Double {
+        guard systemConfig.estimatedFinalMixDensity > 0 else { return 0 }
+        return theoGummyMass / systemConfig.estimatedFinalMixDensity
     }
 
     /// Theoretical active concentration per gummy = user-configured dose.
@@ -186,20 +190,39 @@ struct ExperimentalData2View: View {
 
     // MARK: - Gummy Properties (Experimental)
 
-    /// Experimental mass per gummy from HP data:
-    /// (gummyMixtureMass − totalLosses) / moldsFilled
-    private var expGummyMass: Double? {
-        guard let mixMass = hpGummyMixtureMass,
-              let losses = totalLossMass,
-              let molds = viewModel.weightMoldsFilled,
-              molds > 0 else { return nil }
-        return (mixMass - losses) / molds
+    /// Syringe tare from SystemConfig for the selected (or default) transfer syringe.
+    private var hpSyringeTare: Double {
+        let syringeID = viewModel.hpTransferSyringeID ?? systemConfig.syringes.first?.id
+        return syringeID.map { systemConfig.syringeTare(for: $0) } ?? 0
     }
 
-    /// Experimental volume per gummy = expGummyMass / experimental final density.
+    /// HP density of gummy mixture = (syringe+mix − syringe tare) / volume drawn into syringe.
+    private var hpDensityGummyMix: Double? {
+        guard let syringeWithMix = viewModel.weightSyringeWithMix,
+              let vol = viewModel.volumeSyringeGummyMix,
+              vol > 0 else { return nil }
+        return (syringeWithMix - hpSyringeTare) / vol
+    }
+
+    /// Net gummy mix transferred to trays = syringe+mix − syringe(residue).
+    private var hpNetGummyMixTransferred: Double? {
+        guard let syringeWithMix = viewModel.weightSyringeWithMix,
+              let syringeResidue = viewModel.weightSyringeResidue else { return nil }
+        return syringeWithMix - syringeResidue
+    }
+
+    /// Experimental mass per gummy = net total gummy mixture / molds filled.
+    private var expGummyMass: Double? {
+        guard let mixtureMass = hpGummyMixtureMass,
+              let molds = viewModel.weightMoldsFilled,
+              molds > 0 else { return nil }
+        return mixtureMass / molds
+    }
+
+    /// Experimental volume per gummy = expGummyMass / gummy mixture density.
     private var expGummyVolume: Double? {
         guard let mass = expGummyMass,
-              let density = viewModel.calcDensityFinalMix(systemConfig: systemConfig),
+              let density = hpDensityGummyMix,
               density > 0 else { return nil }
         return mass / density
     }
@@ -259,11 +282,11 @@ struct ExperimentalData2View: View {
     // MARK: - Experimental (from HP cumulative scale readings)
 
     // Gelatin
-    private var expGelatinMass: Double? {
-        viewModel.hpIndividualGelatin(systemConfig: systemConfig)
-    }
     private var expGelatinWaterMass: Double? {
-        viewModel.hpIndividualGelatinWater
+        viewModel.hpIndividualGelatinWater(systemConfig: systemConfig)
+    }
+    private var expGelatinMass: Double? {
+        viewModel.hpIndividualGelatin
     }
     private var expGelatinMixTotal: Double? {
         guard let g = expGelatinMass, let w = expGelatinWaterMass else { return nil }
@@ -271,14 +294,14 @@ struct ExperimentalData2View: View {
     }
 
     // Sugar
-    private var expGranulatedMass: Double? {
-        viewModel.hpIndividualGranulated(systemConfig: systemConfig)
+    private var expSugarWaterMass: Double? {
+        viewModel.hpIndividualSugarWater(systemConfig: systemConfig)
     }
     private var expGlucoseSyrupMass: Double? {
         viewModel.hpIndividualGlucoseSyrup
     }
-    private var expSugarWaterMass: Double? {
-        viewModel.hpIndividualSugarWater
+    private var expGranulatedMass: Double? {
+        viewModel.hpIndividualGranulated
     }
     private var expSugarMixTotal: Double? {
         guard let g = expGranulatedMass, let gl = expGlucoseSyrupMass, let w = expSugarWaterMass else { return nil }
@@ -286,22 +309,36 @@ struct ExperimentalData2View: View {
     }
 
     // Activation
-    private var expCitricAcidMass: Double? {
-        viewModel.hpIndividualCitricAcid(systemConfig: systemConfig)
+    private var expActiveMass: Double? {
+        viewModel.hpIndividualActive(systemConfig: systemConfig)
     }
-    private var expActivationWaterMass: Double? {
-        viewModel.hpIndividualActivationWater
+    private var expCitricAcidMass: Double? {
+        viewModel.hpIndividualCitricAcid
     }
     private var expKSorbateMass: Double? {
         viewModel.hpIndividualKSorbate
     }
-    private var expFlavorOilsTerpsMass: Double? {
-        viewModel.hpIndividualFlavorOilsTerpsActive
+    private var expActivationWaterMass: Double? {
+        viewModel.hpIndividualActivationWater
+    }
+    private var expAdditionalActivationWaterMass: Double? {
+        viewModel.hpIndividualAdditionalActivationWater
+    }
+    private var expFlavorOilsMass: Double? {
+        viewModel.hpIndividualFlavorOils
+    }
+    private var expColorMass: Double? {
+        viewModel.hpIndividualColor
+    }
+    private var expTerpsMass: Double? {
+        viewModel.hpIndividualTerps
     }
     private var expActivationMixTotal: Double? {
-        guard let c = expCitricAcidMass, let w = expActivationWaterMass,
-              let k = expKSorbateMass, let f = expFlavorOilsTerpsMass else { return nil }
-        return c + w + k + f
+        guard let a = expActiveMass, let c = expCitricAcidMass,
+              let k = expKSorbateMass, let w = expActivationWaterMass,
+              let aw = expAdditionalActivationWaterMass,
+              let fo = expFlavorOilsMass, let co = expColorMass, let t = expTerpsMass else { return nil }
+        return a + c + k + w + aw + fo + co + t
     }
 
     // MARK: - Body
@@ -339,12 +376,12 @@ struct ExperimentalData2View: View {
 
                 // MARK: Gelatin Mixture
                 comparisonSubheader("Gelatin Mixture")
-                comparisonRow("Gelatin",
-                              theoretical: theoGelatinMass,
-                              experimental: expGelatinMass)
                 comparisonRow("Water",
                               theoretical: theoGelatinWaterMass,
                               experimental: expGelatinWaterMass)
+                comparisonRow("Gelatin",
+                              theoretical: theoGelatinMass,
+                              experimental: expGelatinMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Gelatin Mix Total",
                               theoretical: theoGelatinMixTotal,
@@ -356,15 +393,15 @@ struct ExperimentalData2View: View {
 
                 // MARK: Sugar Mixture
                 comparisonSubheader("Sugar Mixture")
-                comparisonRow("Granulated Sugar",
-                              theoretical: theoGranulatedMass,
-                              experimental: expGranulatedMass)
-                comparisonRow("Glucose Syrup",
-                              theoretical: theoGlucoseSyrupMass,
-                              experimental: expGlucoseSyrupMass)
                 comparisonRow("Water",
                               theoretical: theoSugarWaterMass,
                               experimental: expSugarWaterMass)
+                comparisonRow("Glucose Syrup",
+                              theoretical: theoGlucoseSyrupMass,
+                              experimental: expGlucoseSyrupMass)
+                comparisonRow("Granulated Sugar",
+                              theoretical: theoGranulatedMass,
+                              experimental: expGranulatedMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Sugar Mix Total",
                               theoretical: theoSugarMixTotal,
@@ -383,18 +420,30 @@ struct ExperimentalData2View: View {
 
                 // MARK: Activation Mixture
                 comparisonSubheader("Activation Mixture")
+                comparisonRow("Active",
+                              theoretical: 0,
+                              experimental: expActiveMass)
                 comparisonRow("Citric Acid",
                               theoretical: theoCitricAcidMass,
                               experimental: expCitricAcidMass)
-                comparisonRow("Activation Water",
-                              theoretical: theoActivationWaterMass,
-                              experimental: expActivationWaterMass)
-                comparisonRow("K Sorbate",
+                comparisonRow("Potassium Sorbate",
                               theoretical: theoKSorbateMass,
                               experimental: expKSorbateMass)
-                comparisonRow("Oils/Terps/Active",
-                              theoretical: theoFlavorOilsTerpsMass,
-                              experimental: expFlavorOilsTerpsMass)
+                comparisonRow("(Base) Activation Water",
+                              theoretical: theoActivationWaterMass,
+                              experimental: expActivationWaterMass)
+                comparisonRow("Additional Activation Water",
+                              theoretical: 0,
+                              experimental: expAdditionalActivationWaterMass)
+                comparisonRow("Flavor Oils",
+                              theoretical: theoFlavorOilsMass,
+                              experimental: expFlavorOilsMass)
+                comparisonRow("Color",
+                              theoretical: theoColorMass,
+                              experimental: expColorMass)
+                comparisonRow("Terps",
+                              theoretical: theoTerpsMass,
+                              experimental: expTerpsMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Activation Mix Total",
                               theoretical: theoActivationMixTotal,
@@ -835,6 +884,7 @@ struct ExperimentalData2View: View {
         theoretical: Double,
         experimental: Double?
     ) -> some View {
+        let delta: Double? = experimental.map { $0 - theoretical }
         let pctError: Double? = experimental.map { theoretical > 0 ? (($0 - theoretical) / theoretical) * 100.0 : 0.0 }
 
         return HStack(spacing: 4) {
@@ -856,11 +906,18 @@ struct ExperimentalData2View: View {
                 .foregroundStyle(experimental == nil ? CMTheme.textTertiary : CMTheme.textPrimary)
                 .frame(width: colWidth, alignment: .trailing)
 
-            // Δ quantity — not applicable for mass fractions
-            Text("—")
-                .cmMono12()
-                .foregroundStyle(CMTheme.textTertiary)
-                .frame(width: colWidth, alignment: .trailing)
+            // Δ quantity (percentage points)
+            Group {
+                if let d = delta {
+                    Text(String(format: "%+.3f", d))
+                        .foregroundStyle(errorColor(pct: abs(pctError ?? 0)))
+                } else {
+                    Text("—")
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+            }
+            .cmMono12()
+            .frame(width: colWidth, alignment: .trailing)
 
             // Relative % error
             Group {

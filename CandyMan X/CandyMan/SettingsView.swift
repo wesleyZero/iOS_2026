@@ -2106,18 +2106,24 @@ struct SettingsView: View {
                         CMHaptic.medium()
                         systemConfig.developerMode = newValue
                         if newValue {
+                            systemConfig.expandDetailSectionsByDefault = true
                             systemConfig.syntheticMeasurementsEnabled = true
                             systemConfig.syntheticDataSet1Enabled = true
+                            systemConfig.syntheticDataSet2Enabled = true
                             withAnimation(.cmSpring) {
                                 systemConfig.applyDevMode(to: viewModel)
                                 systemConfig.applySyntheticMeasurements(to: viewModel)
+                                systemConfig.applySyntheticDataSet2(to: viewModel)
                             }
                         } else {
                             withAnimation(.cmSpring) {
                                 systemConfig.revertDevMode(to: viewModel)
+                                systemConfig.expandDetailSectionsByDefault = false
                                 systemConfig.syntheticMeasurementsEnabled = false
                                 systemConfig.syntheticDataSet1Enabled = false
+                                systemConfig.syntheticDataSet2Enabled = false
                                 systemConfig.clearSyntheticMeasurements(from: viewModel)
+                                systemConfig.clearSyntheticDataSet2(from: viewModel)
                             }
                         }
                     }
@@ -2180,6 +2186,31 @@ struct SettingsView: View {
                     .cmFootnote()
                     .cmSettingsRowPadding()
                     .cmExpandTransition()
+
+                Divider().padding(.horizontal, 16)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Synthetic Data Set 2").font(.body)
+                        Text("HP measurements with stir bars, corrections, transfer + mold data")
+                            .cmFootnote()
+                    }
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { systemConfig.syntheticDataSet2Enabled },
+                        set: { newValue in
+                            CMHaptic.medium()
+                            systemConfig.syntheticDataSet2Enabled = newValue
+                            if newValue {
+                                withAnimation(.cmSpring) { systemConfig.applySyntheticDataSet2(to: viewModel) }
+                            } else {
+                                withAnimation(.cmSpring) { systemConfig.clearSyntheticDataSet2(from: viewModel) }
+                            }
+                        }
+                    ))
+                    .labelsHidden()
+                }
+                .cmSettingsRowPadding()
+                .cmExpandTransition()
             }
         }
     }

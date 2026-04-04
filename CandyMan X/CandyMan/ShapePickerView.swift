@@ -151,6 +151,10 @@ struct ShapePickerView: View {
             VStack(spacing: 12) {
                 // ── Input cards / summary ──
                 Color.clear.frame(height: 0).id("scrollTop")
+
+                // ── Dev Mode quick toggle ──
+                devModeToggle.cardStyle()
+
                 if viewModel.batchCalculated {
                     // ── Post-calculate: summary + output ──
                     if isRegular {
@@ -452,6 +456,47 @@ struct ShapePickerView: View {
         } message: {
             Text("Enter a name for this template.")
         }
+    }
+
+    // MARK: - Dev Mode Toggle
+
+    private var devModeToggle: some View {
+        HStack {
+            Text("Developer Mode")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(systemConfig.designTitle)
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { systemConfig.developerMode },
+                set: { newValue in
+                    CMHaptic.medium()
+                    systemConfig.developerMode = newValue
+                    if newValue {
+                        systemConfig.expandDetailSectionsByDefault = true
+                        systemConfig.syntheticMeasurementsEnabled = true
+                        systemConfig.syntheticDataSet1Enabled = true
+                        systemConfig.syntheticDataSet2Enabled = true
+                        withAnimation(.cmSpring) {
+                            systemConfig.applyDevMode(to: viewModel)
+                            systemConfig.applySyntheticMeasurements(to: viewModel)
+                            systemConfig.applySyntheticDataSet2(to: viewModel)
+                        }
+                    } else {
+                        withAnimation(.cmSpring) {
+                            systemConfig.revertDevMode(to: viewModel)
+                            systemConfig.expandDetailSectionsByDefault = false
+                            systemConfig.syntheticMeasurementsEnabled = false
+                            systemConfig.syntheticDataSet1Enabled = false
+                            systemConfig.syntheticDataSet2Enabled = false
+                            systemConfig.clearSyntheticMeasurements(from: viewModel)
+                            systemConfig.clearSyntheticDataSet2(from: viewModel)
+                        }
+                    }
+                }
+            ))
+            .labelsHidden()
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
     }
 
     // MARK: - Reset Section
@@ -1136,7 +1181,7 @@ private struct ActivesSectionView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(Active.allCases) { substance in
                     let isSelected = viewModel.selectedActive == substance
                     Button {
@@ -1145,6 +1190,8 @@ private struct ActivesSectionView: View {
                     } label: {
                         Text(substance.rawValue)
                             .font(.headline)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
                             .foregroundStyle(isSelected ? .white : CMTheme.textTertiary)
                             .shadow(color: isSelected ? .white.opacity(0.3) : .clear, radius: 2)
                             .frame(maxWidth: .infinity)

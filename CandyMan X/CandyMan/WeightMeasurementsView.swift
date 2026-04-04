@@ -97,16 +97,6 @@ struct WeightMeasurementsView: View {
             ThemedDivider()
 
             VStack(spacing: 0) {
-                // MARK: Gelatin Mixture
-                HStack {
-                    Text("Gelatin Mixture").cmSubsectionTitle()
-                    CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
-                        showCorrectionsSection = .gelatin
-                    }
-                    Spacer()
-                }
-                .cmSubsectionPadding()
-
                     // Compute theoretical masses on each scale (mix + container tare)
                     let batchResult = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
                     let sugarOverage = 1.0 + systemConfig.sugarMixtureOveragePercent / 100.0
@@ -130,21 +120,123 @@ struct WeightMeasurementsView: View {
 
                     let substrateBeakerTare = substrateContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
                     let sugarBeakerTare = sugarContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
-                    let activTare = activContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
+                    let activBeakerTare = activContainerID.map { systemConfig.containerTare(for: $0) } ?? 0
 
-                    // Stir bar masses for substrate and sugar sections
+                    // Stir bar masses for substrate, sugar, and activation sections
                     let substrateStirBarID = viewModel.hpSubstrateStirBarID ?? systemConfig.stirBars.first?.id
                     let sugarStirBarID = viewModel.hpSugarMixStirBarID ?? systemConfig.stirBars.first?.id
+                    let activStirBarID = viewModel.hpActivationStirBarID ?? systemConfig.stirBars.first?.id
                     let substrateStirBarMass = substrateStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
                     let sugarStirBarMass = sugarStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+                    let activStirBarMass = activStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
 
                     // Combined tares (beaker + stir bar)
                     let substrateTare = substrateBeakerTare + substrateStirBarMass
                     let sugarTare = sugarBeakerTare + sugarStirBarMass
+                    let activTare = activBeakerTare + activStirBarMass
 
                     let substrateMassOnScale = substrateMass + substrateTare
                     let sugarMassOnScale     = sugarMass + sugarTare
                     let activMassOnScale     = activMass + activTare
+
+                // MARK: Activation Mixture
+                    // ===== ACTIVATION MIX SECTION =====
+                    HStack {
+                        Text("Activation Mixture").cmSubsectionTitle()
+                        CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
+                            showCorrectionsSection = .activation
+                        }
+                        Spacer()
+                    }
+                    .cmSubsectionPadding()
+                    hpSectionBox {
+                        hpContainerSelector(
+                            label: "Activation Tray",
+                            selectedID: Binding(
+                                get: { activContainerID },
+                                set: { viewModel.hpActivationTrayID = $0 }
+                            )
+                        )
+                        hpStirBarSelector(
+                            label: "Activation Stir Bar",
+                            selectedID: Binding(
+                                get: { activStirBarID },
+                                set: { viewModel.hpActivationStirBarID = $0 }
+                            )
+                        )
+                        hpScaleSelector(
+                            label: "Activation Scale",
+                            selectedID: $viewModel.hpActivationScaleID,
+                            theoreticalMassOnScale: activMassOnScale
+                        )
+                        let activRes = viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig)
+                        let activComps = batchResult.activationMix.components
+                        let mCitric = activComps.first(where: { $0.label == "Citric Acid" })?.massGrams ?? 0
+                        let mKSorbate = activComps.first(where: { $0.label == "Potassium Sorbate" })?.massGrams ?? 0
+                        let mTotalActivWater = activComps.first(where: { $0.label == "Activation Water" })?.massGrams ?? 0
+                        let mAdditionalActivWater = viewModel.additionalActiveWaterML * systemConfig.densityWater
+                        let mBaseActivWater = mTotalActivWater - mAdditionalActivWater
+                        let mFlavorOils = activComps.filter { $0.activationCategory == .flavorOil }.reduce(0) { $0 + $1.massGrams }
+                        let mColor = activComps.filter { $0.activationCategory == .color }.reduce(0) { $0 + $1.massGrams }
+                        let mTerps = activComps.filter { $0.activationCategory == .terpene }.reduce(0) { $0 + $1.massGrams }
+
+                        // Expected cumulative readings (shown as hints when previous field is filled)
+                        let expectedCitric: Double? = viewModel.hpActive.map { $0 + mCitric }
+                        let expectedKSorbate: Double? = viewModel.hpCitricAcid.map { $0 + mKSorbate }
+                        let expectedBaseWater: Double? = viewModel.hpKSorbate.map { $0 + mBaseActivWater }
+                        let expectedAdditionalWater: Double? = viewModel.hpActivationWater.map { $0 + mAdditionalActivWater }
+                        let expectedFlavorOils: Double? = viewModel.hpAdditionalActivationWater.map { $0 + mFlavorOils }
+                        let expectedColor: Double? = viewModel.hpFlavorOils.map { $0 + mColor }
+                        let expectedTerps: Double? = viewModel.hpColor.map { $0 + mTerps }
+
+                        hpTareDisplayRow("Container", tare: activBeakerTare, resolution: activRes)
+                        hpTareDisplayRow("+ Stir Bar", tare: activTare, resolution: activRes)
+                        subWeightRow("+ Active", value: $viewModel.hpActive, resolution: activRes)
+                        subWeightRow("+ Citric Acid", value: $viewModel.hpCitricAcid, resolution: activRes,
+                                     expected: viewModel.hpActive != nil && viewModel.hpCitricAcid == nil ? expectedCitric : nil,
+                                     individualMass: mCitric)
+                        subWeightRow("+ Potassium Sorbate", value: $viewModel.hpKSorbate, resolution: activRes,
+                                     expected: viewModel.hpCitricAcid != nil && viewModel.hpKSorbate == nil ? expectedKSorbate : nil,
+                                     individualMass: mKSorbate)
+                        subWeightRow("+ (Base) Activation Water", value: $viewModel.hpActivationWater, resolution: activRes,
+                                     expected: viewModel.hpKSorbate != nil && viewModel.hpActivationWater == nil ? expectedBaseWater : nil,
+                                     individualMass: mBaseActivWater)
+                        subWeightRow("+ Additional Activation Water", value: $viewModel.hpAdditionalActivationWater, resolution: activRes,
+                                     expected: viewModel.hpActivationWater != nil && viewModel.hpAdditionalActivationWater == nil ? expectedAdditionalWater : nil,
+                                     individualMass: mAdditionalActivWater)
+                        subWeightRow("+ Flavor Oils", value: $viewModel.hpFlavorOils, resolution: activRes,
+                                     expected: viewModel.hpAdditionalActivationWater != nil && viewModel.hpFlavorOils == nil ? expectedFlavorOils : nil,
+                                     individualMass: mFlavorOils)
+                        subWeightRow("+ Color", value: $viewModel.hpColor, resolution: activRes,
+                                     expected: viewModel.hpFlavorOils != nil && viewModel.hpColor == nil ? expectedColor : nil,
+                                     individualMass: mColor)
+                        subWeightRow("+ Terps", value: $viewModel.hpTerps, resolution: activRes,
+                                     expected: viewModel.hpColor != nil && viewModel.hpTerps == nil ? expectedTerps : nil,
+                                     individualMass: mTerps)
+                        // Corrections total (if any corrections have been entered)
+                        if let activCorrTotal = viewModel.activationCorrectionsTotal {
+                            hpTotalRow("Corrections", value: activCorrTotal)
+                        }
+                        subWeightRow("- Activation Tray (Residue)", value: $viewModel.hpActivationTrayResidue, resolution: activRes)
+                        let residueLoss: Double? = viewModel.hpActivationTrayResidue.map { $0 - activTare }
+                        hpTotalRow("Residue Loss", value: residueLoss)
+                        let activNetTotal: Double? = {
+                            guard let last = viewModel.hpTerps else { return nil }
+                            let loss = residueLoss ?? 0
+                            return (last - activTare) - loss + (viewModel.activationCorrectionsTotal ?? 0)
+                        }()
+                        hpTotalRow("Net Total | Activation Mixture", value: activNetTotal)
+                    }
+
+                // MARK: Gelatin Mixture
+                HStack {
+                    Text("Gelatin Mixture").cmSubsectionTitle()
+                    CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
+                        showCorrectionsSection = .gelatin
+                    }
+                    Spacer()
+                }
+                .cmSubsectionPadding()
 
                     // ===== GELATIN / SUBSTRATE SECTION =====
                     hpSectionBox {
@@ -168,20 +260,29 @@ struct WeightMeasurementsView: View {
                             theoreticalMassOnScale: substrateMassOnScale
                         )
                         let substrateRes = viewModel.hpScaleResolution(for: viewModel.hpSubstrateScaleID, systemConfig: systemConfig)
-                        let expectedGelatin = substrateTare + batchResult.gelatinMix.components[0].massGrams
-                        let expectedGelatinWater: Double? = viewModel.hpGelatin.map { $0 + batchResult.gelatinMix.components[1].massGrams }
+                        let mGelatinWater = batchResult.gelatinMix.components[1].massGrams
+                        let mGelatinPowder = batchResult.gelatinMix.components[0].massGrams
+                        let expectedWater = substrateTare + mGelatinWater
+                        let expectedGelatin: Double? = viewModel.hpGelatinWater.map { $0 + mGelatinPowder }
 
-                        hpTareDisplayRow("Beaker + Stir Bar", tare: substrateTare, resolution: substrateRes)
-                        subWeightRow("+ Gelatin", value: $viewModel.hpGelatin, resolution: substrateRes,
-                                     expected: viewModel.hpGelatin == nil ? expectedGelatin : nil)
+                        hpTareDisplayRow("Beaker", tare: substrateBeakerTare, resolution: substrateRes)
+                        hpTareDisplayRow("+ Stir Bar", tare: substrateTare, resolution: substrateRes)
                         subWeightRow("+ Water", value: $viewModel.hpGelatinWater, resolution: substrateRes,
-                                     expected: viewModel.hpGelatin != nil && viewModel.hpGelatinWater == nil ? expectedGelatinWater : nil)
+                                     expected: viewModel.hpGelatinWater == nil ? expectedWater : nil,
+                                     individualMass: mGelatinWater)
+                        subWeightRow("+ Gelatin", value: $viewModel.hpGelatin, resolution: substrateRes,
+                                     expected: viewModel.hpGelatinWater != nil && viewModel.hpGelatin == nil ? expectedGelatin : nil,
+                                     individualMass: mGelatinPowder)
+                        subWeightRow("- Substrate Beaker (Residue)", value: $viewModel.weightBeakerResidue, resolution: substrateRes)
+                        let gelatinResidueLoss: Double? = viewModel.weightBeakerResidue.map { $0 - substrateTare }
+                        hpTotalRow("Residue Loss", value: gelatinResidueLoss)
                         // Corrections total (if any corrections have been entered)
                         if let corrTotal = viewModel.correctionsTotal {
                             hpTotalRow("Corrections", value: corrTotal)
                         }
-                        let gelatinNet: Double? = viewModel.hpGelatinWater.map {
-                            ($0 - substrateTare) + (viewModel.correctionsTotal ?? 0)
+                        let gelatinNet: Double? = viewModel.hpGelatin.map {
+                            let loss = gelatinResidueLoss ?? 0
+                            return ($0 - substrateTare) - loss + (viewModel.correctionsTotal ?? 0)
                         }
                         hpTotalRow("Net Total | Gelatin Mixture", value: gelatinNet)
                     }
@@ -216,35 +317,44 @@ struct WeightMeasurementsView: View {
                             theoreticalMassOnScale: sugarMassOnScale
                         )
                         let sugarRes = viewModel.hpScaleResolution(for: viewModel.hpSugarMixScaleID, systemConfig: systemConfig)
-                        let mGranulated = batchResult.sugarMix.components[1].massGrams * sugarOverage
-                        let mGlucoseSyrup = batchResult.sugarMix.components[0].massGrams * sugarOverage
                         let mSugarWater = batchResult.sugarMix.components[2].massGrams * sugarOverage
-                        let expectedGranulated = sugarTare + mGranulated
-                        let expectedGlucose: Double? = viewModel.hpGranulated.map { $0 + mGlucoseSyrup }
-                        let expectedSugarWater: Double? = (viewModel.hpGlucoseSyrup ?? viewModel.hpGranulated).map { $0 + mSugarWater }
+                        let mGlucoseSyrup = batchResult.sugarMix.components[0].massGrams * sugarOverage
+                        let mGranulated = batchResult.sugarMix.components[1].massGrams * sugarOverage
+                        let expectedSugarWater = sugarTare + mSugarWater
+                        let expectedGlucose: Double? = viewModel.hpSugarWater.map { $0 + mGlucoseSyrup }
+                        let expectedGranulated: Double? = viewModel.hpGlucoseSyrup.map { $0 + mGranulated }
 
-                        hpTareDisplayRow("Beaker + Stir Bar", tare: sugarTare, resolution: sugarRes)
-                        subWeightRow("+ Granulated Sugar", value: $viewModel.hpGranulated, resolution: sugarRes,
-                                     expected: viewModel.hpGranulated == nil ? expectedGranulated : nil)
-                        subWeightRow("+ Glucose Syrup", value: $viewModel.hpGlucoseSyrup, resolution: sugarRes,
-                                     expected: viewModel.hpGranulated != nil && viewModel.hpGlucoseSyrup == nil ? expectedGlucose : nil)
+                        hpTareDisplayRow("Beaker", tare: sugarBeakerTare, resolution: sugarRes)
+                        hpTareDisplayRow("+ Stir Bar", tare: sugarTare, resolution: sugarRes)
                         subWeightRow("+ Water", value: $viewModel.hpSugarWater, resolution: sugarRes,
-                                     expected: viewModel.hpGlucoseSyrup != nil && viewModel.hpSugarWater == nil ? expectedSugarWater : nil)
+                                     expected: viewModel.hpSugarWater == nil ? expectedSugarWater : nil,
+                                     individualMass: mSugarWater)
+                        subWeightRow("+ Glucose Syrup", value: $viewModel.hpGlucoseSyrup, resolution: sugarRes,
+                                     expected: viewModel.hpSugarWater != nil && viewModel.hpGlucoseSyrup == nil ? expectedGlucose : nil,
+                                     individualMass: mGlucoseSyrup)
+                        subWeightRow("+ Granulated Sugar", value: $viewModel.hpGranulated, resolution: sugarRes,
+                                     expected: viewModel.hpGlucoseSyrup != nil && viewModel.hpGranulated == nil ? expectedGranulated : nil,
+                                     individualMass: mGranulated)
                         // Corrections total (if any corrections have been entered)
                         if let sugarCorrTotal = viewModel.sugarCorrectionsTotal {
                             hpTotalRow("Corrections", value: sugarCorrTotal)
                         }
-                        let sugarNet: Double? = viewModel.hpSugarWater.map {
+                        let sugarNet: Double? = viewModel.hpGranulated.map {
                             ($0 - sugarTare) + (viewModel.sugarCorrectionsTotal ?? 0)
                         }
                         hpTotalRow("Net Total | Sugar Mixture", value: sugarNet)
                     }
 
                     // ===== TRANSFER ROW =====
-                    let expectedSugarTransfer: Double? = viewModel.hpGelatinWater.map { $0 + batchResult.sugarMix.totalMassGrams }
+                    let expectedSugarTransfer: Double? = viewModel.hpGelatin.map { $0 + batchResult.sugarMix.totalMassGrams }
                     HStack(spacing: 6) {
                         Text("+ Sugar Mixture").cmHpLabel(color: systemConfig.designPrimaryAccent)
                         Spacer()
+                        if expectedSugarTransfer != nil, viewModel.hpSubstrateSugarTransfer == nil {
+                            Text(String(format: "%.3f", batchResult.sugarMix.totalMassGrams))
+                                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                         if let expected = expectedSugarTransfer, viewModel.hpSubstrateSugarTransfer == nil {
                             Text(String(format: "%.3f", expected))
                                 .font(.system(size: 10, weight: .regular, design: .monospaced))
@@ -261,67 +371,9 @@ struct WeightMeasurementsView: View {
                     .cmHpSubRowPadding()
                     .cmExpandTransition()
 
-                    // ===== ACTIVATION MIX SECTION =====
-                    HStack {
-                        Text("Activation Mixture").cmSubsectionTitle()
-                        CMCorrectionsButton(accentColor: systemConfig.designPrimaryAccent) {
-                            showCorrectionsSection = .activation
-                        }
-                        Spacer()
-                    }
-                    .cmSubsectionPadding()
-                    hpSectionBox {
-                        hpContainerSelector(
-                            label: "Activation Tray",
-                            selectedID: Binding(
-                                get: { activContainerID },
-                                set: { viewModel.hpActivationTrayID = $0 }
-                            )
-                        )
-                        hpScaleSelector(
-                            label: "Activation Scale",
-                            selectedID: $viewModel.hpActivationScaleID,
-                            theoreticalMassOnScale: activMassOnScale
-                        )
-                        let activRes = viewModel.hpScaleResolution(for: viewModel.hpActivationScaleID, systemConfig: systemConfig)
-                        let activComps = batchResult.activationMix.components
-                        let mCitric = activComps.first(where: { $0.label == "Citric Acid" })?.massGrams ?? 0
-                        let mActivWater = activComps.first(where: { $0.label == "Activation Water" })?.massGrams ?? 0
-                        let mKSorbate = activComps.first(where: { $0.label == "Potassium Sorbate" })?.massGrams ?? 0
-                        let mFlavorOilsTerps = activMass - mCitric - mActivWater - mKSorbate
-
-                        let expectedCitric = activTare + mCitric
-                        let expectedActivWater: Double? = viewModel.hpCitricAcid.map { $0 + mActivWater }
-                        let expectedKSorbate: Double? = viewModel.hpActivationWater.map { $0 + mKSorbate }
-                        let expectedFlavorOilsTerps: Double? = viewModel.hpKSorbate.map { $0 + mFlavorOilsTerps }
-
-                        hpTareDisplayRow("Container (Clean)", tare: activTare, resolution: activRes)
-                        subWeightRow("+ Citric Acid", value: $viewModel.hpCitricAcid, resolution: activRes,
-                                     expected: viewModel.hpCitricAcid == nil ? expectedCitric : nil)
-                        subWeightRow("+ Activation Water", value: $viewModel.hpActivationWater, resolution: activRes,
-                                     expected: viewModel.hpCitricAcid != nil && viewModel.hpActivationWater == nil ? expectedActivWater : nil)
-                        subWeightRow("+ KSorbate", value: $viewModel.hpKSorbate, resolution: activRes,
-                                     expected: viewModel.hpActivationWater != nil && viewModel.hpKSorbate == nil ? expectedKSorbate : nil)
-                        subWeightRow("+ Flavor Oils + Terps + Active", value: $viewModel.hpFlavorOilsTerpsActive, resolution: activRes,
-                                     expected: viewModel.hpKSorbate != nil && viewModel.hpFlavorOilsTerpsActive == nil ? expectedFlavorOilsTerps : nil)
-                        subWeightRow("- Activation Tray (Residue)", value: $viewModel.hpActivationTrayResidue, resolution: activRes)
-                        let residueLoss: Double? = viewModel.hpActivationTrayResidue.map { $0 - activTare }
-                        hpTotalRow("Residue Loss", value: residueLoss)
-                        // Corrections total (if any corrections have been entered)
-                        if let activCorrTotal = viewModel.activationCorrectionsTotal {
-                            hpTotalRow("Corrections", value: activCorrTotal)
-                        }
-                        let activNetTotal: Double? = {
-                            guard let last = viewModel.hpFlavorOilsTerpsActive else { return nil }
-                            let loss = residueLoss ?? 0
-                            return (last - activTare) - loss + (viewModel.activationCorrectionsTotal ?? 0)
-                        }()
-                        hpTotalRow("Net Total | Activation Mixture", value: activNetTotal)
-                    }
-
                     // ===== ACTIVATION TRANSFER =====
                     let activNetTotal: Double? = {
-                        guard let last = viewModel.hpFlavorOilsTerpsActive else { return nil }
+                        guard let last = viewModel.hpTerps else { return nil }
                         let residue = viewModel.hpActivationTrayResidue.map { $0 - activTare } ?? 0
                         return (last - activTare) - residue + (viewModel.activationCorrectionsTotal ?? 0)
                     }()
@@ -333,6 +385,11 @@ struct WeightMeasurementsView: View {
                     HStack(spacing: 6) {
                         Text("+ Activation Mixture").cmHpLabel(color: systemConfig.designPrimaryAccent)
                         Spacer()
+                        if let activNet = activNetTotal, expectedActivTransfer != nil, viewModel.hpSubstrateActivationTransfer == nil {
+                            Text(String(format: "%.3f", activNet))
+                                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                         if let expected = expectedActivTransfer, viewModel.hpSubstrateActivationTransfer == nil {
                             Text(String(format: "%.3f", expected))
                                 .font(.system(size: 10, weight: .regular, design: .monospaced))
@@ -352,8 +409,6 @@ struct WeightMeasurementsView: View {
                     // ===== NET TOTAL GUMMY MIXTURE =====
                     let gummyMixtureTotal: Double? = viewModel.hpSubstrateActivationTransfer.map { $0 - substrateTare }
                     hpTotalRow("Net Total | Gummy Mixture", value: gummyMixtureTotal)
-
-                    weightRow("Substrate Beaker (Residue)", value: $viewModel.weightBeakerResidue, resolution: systemConfig.resolutionBeakerResidue)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
@@ -456,7 +511,7 @@ struct WeightMeasurementsView: View {
                 }
             }
         }
-        .fullScreenCover(isPresented: $showFullScreen) {
+        .fullScreenCover(isPresented: isFullScreen ? .constant(false) : $showFullScreen) {
             WeightMeasurementsFullScreenView()
                 .environment(viewModel)
                 .environment(systemConfig)
@@ -516,11 +571,17 @@ struct WeightMeasurementsView: View {
 
     /// Indented sub-row for high-precision mode fields.
     /// `expected` is the theoretical cumulative scale reading shown in secondary accent next to input.
-    private func subWeightRow(_ label: String, value: Binding<Double?>, resolution: MeasurementResolution, expected: Double? = nil) -> some View {
+    /// `individualMass` is the individual ingredient mass shown in white text (full-screen only).
+    private func subWeightRow(_ label: String, value: Binding<Double?>, resolution: MeasurementResolution, expected: Double? = nil, individualMass: Double? = nil) -> some View {
         let decimals = resolution.decimalPlaces
         return HStack(spacing: 6) {
             Text(label).cmHpLabel(color: measurementColor)
             Spacer()
+            if let mass = individualMass, expected != nil {
+                Text(String(format: "%.\(decimals)f", mass))
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
             if let expected {
                 Text(String(format: "%.\(decimals)f", expected))
                     .font(.system(size: 10, weight: .regular, design: .monospaced))
@@ -833,7 +894,7 @@ struct WeightMeasurementsFullScreenView: View {
     @Environment(SystemConfig.self) private var systemConfig
     @Environment(\.dismiss) private var dismiss
 
-    private let scaleFactor: CGFloat = 3.0
+    private let scaleFactor: CGFloat = 1.5
     @State private var contentHeight: CGFloat = 0
 
     var body: some View {

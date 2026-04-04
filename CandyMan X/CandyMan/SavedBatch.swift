@@ -225,10 +225,15 @@ class SavedBatch {
     var hpSugarWater: Double?
 
     // HP cumulative scale readings — Activation Mix
+    // Order: Active → Citric Acid → K Sorbate → Base Water → Additional Water → Flavor Oils → Terps
+    var hpActive: Double?
     var hpCitricAcid: Double?
-    var hpActivationWater: Double?
     var hpKSorbate: Double?
-    var hpFlavorOilsTerpsActive: Double?
+    var hpActivationWater: Double?
+    var hpAdditionalActivationWater: Double?
+    var hpFlavorOils: Double?
+    var hpColor: Double?
+    var hpTerps: Double?
     var hpActivationTrayResidue: Double?
 
     // HP equipment IDs
@@ -237,6 +242,7 @@ class SavedBatch {
     var hpActivationTrayID: String?
     var hpSubstrateStirBarID: String?
     var hpSugarMixStirBarID: String?
+    var hpActivationStirBarID: String?
     var hpSubstrateScaleID: String?
     var hpSugarMixScaleID: String?
     var hpActivationScaleID: String?
@@ -592,10 +598,14 @@ struct SavedBatchDTO: Codable {
     var hpGranulated: Double?
     var hpGlucoseSyrup: Double?
     var hpSugarWater: Double?
+    var hpActive: Double?
     var hpCitricAcid: Double?
-    var hpActivationWater: Double?
     var hpKSorbate: Double?
-    var hpFlavorOilsTerpsActive: Double?
+    var hpActivationWater: Double?
+    var hpAdditionalActivationWater: Double?
+    var hpFlavorOils: Double?
+    var hpColor: Double?
+    var hpTerps: Double?
     var hpActivationTrayResidue: Double?
 
     // HP equipment IDs
@@ -604,6 +614,7 @@ struct SavedBatchDTO: Codable {
     var hpActivationTrayID: String?
     var hpSubstrateStirBarID: String?
     var hpSugarMixStirBarID: String?
+    var hpActivationStirBarID: String?
     var hpSubstrateScaleID: String?
     var hpSugarMixScaleID: String?
     var hpActivationScaleID: String?
@@ -760,12 +771,14 @@ extension SavedBatch {
             dryWeightReadings: nil,
             hpGelatin: hpGelatin, hpGelatinWater: hpGelatinWater,
             hpGranulated: hpGranulated, hpGlucoseSyrup: hpGlucoseSyrup, hpSugarWater: hpSugarWater,
-            hpCitricAcid: hpCitricAcid, hpActivationWater: hpActivationWater,
-            hpKSorbate: hpKSorbate, hpFlavorOilsTerpsActive: hpFlavorOilsTerpsActive,
+            hpActive: hpActive, hpCitricAcid: hpCitricAcid,
+            hpKSorbate: hpKSorbate, hpActivationWater: hpActivationWater,
+            hpAdditionalActivationWater: hpAdditionalActivationWater,
+            hpFlavorOils: hpFlavorOils, hpColor: hpColor, hpTerps: hpTerps,
             hpActivationTrayResidue: hpActivationTrayResidue,
             hpSubstrateBeakerID: hpSubstrateBeakerID, hpSugarMixBeakerID: hpSugarMixBeakerID,
             hpActivationTrayID: hpActivationTrayID,
-            hpSubstrateStirBarID: hpSubstrateStirBarID, hpSugarMixStirBarID: hpSugarMixStirBarID,
+            hpSubstrateStirBarID: hpSubstrateStirBarID, hpSugarMixStirBarID: hpSugarMixStirBarID, hpActivationStirBarID: hpActivationStirBarID,
             hpSubstrateScaleID: hpSubstrateScaleID, hpSugarMixScaleID: hpSugarMixScaleID,
             hpActivationScaleID: hpActivationScaleID,
             hpSubstrateSugarTransfer: hpSubstrateSugarTransfer,
@@ -900,10 +913,14 @@ extension SavedBatch {
         batch.hpGranulated = dto.hpGranulated
         batch.hpGlucoseSyrup = dto.hpGlucoseSyrup
         batch.hpSugarWater = dto.hpSugarWater
+        batch.hpActive = dto.hpActive
         batch.hpCitricAcid = dto.hpCitricAcid
-        batch.hpActivationWater = dto.hpActivationWater
         batch.hpKSorbate = dto.hpKSorbate
-        batch.hpFlavorOilsTerpsActive = dto.hpFlavorOilsTerpsActive
+        batch.hpActivationWater = dto.hpActivationWater
+        batch.hpAdditionalActivationWater = dto.hpAdditionalActivationWater
+        batch.hpFlavorOils = dto.hpFlavorOils
+        batch.hpColor = dto.hpColor
+        batch.hpTerps = dto.hpTerps
         batch.hpActivationTrayResidue = dto.hpActivationTrayResidue
 
         // HP equipment IDs
@@ -912,6 +929,7 @@ extension SavedBatch {
         batch.hpActivationTrayID = dto.hpActivationTrayID
         batch.hpSubstrateStirBarID = dto.hpSubstrateStirBarID
         batch.hpSugarMixStirBarID = dto.hpSugarMixStirBarID
+        batch.hpActivationStirBarID = dto.hpActivationStirBarID
         batch.hpSubstrateScaleID = dto.hpSubstrateScaleID
         batch.hpSugarMixScaleID = dto.hpSugarMixScaleID
         batch.hpActivationScaleID = dto.hpActivationScaleID
@@ -951,59 +969,73 @@ extension SavedBatch {
 
 extension SavedBatch {
 
-    // --- Gelatin Mix ---
-    var hpIndividualGelatin: Double? {
-        guard let gel = hpGelatin, let tare = frozenSubstrateBeakerTare else { return nil }
-        return gel - tare
-    }
+    // --- Gelatin Mix (order: Water → Gelatin) ---
     var hpIndividualGelatinWater: Double? {
-        guard let water = hpGelatinWater, let gel = hpGelatin else { return nil }
-        return water - gel
+        guard let water = hpGelatinWater, let tare = frozenSubstrateBeakerTare else { return nil }
+        return water - tare
+    }
+    var hpIndividualGelatin: Double? {
+        guard let gel = hpGelatin, let water = hpGelatinWater else { return nil }
+        return gel - water
     }
     var hpGelatinMixtureTotal: Double? {
-        guard let last = hpGelatinWater, let tare = frozenSubstrateBeakerTare else { return nil }
+        guard let last = hpGelatin, let tare = frozenSubstrateBeakerTare else { return nil }
         return last - tare
     }
 
-    // --- Sugar Mix ---
-    var hpIndividualGranulated: Double? {
-        guard let gran = hpGranulated, let tare = frozenSugarMixBeakerTare else { return nil }
-        return gran - tare
+    // --- Sugar Mix (order: Water → Glucose Syrup → Granulated) ---
+    var hpIndividualSugarWater: Double? {
+        guard let water = hpSugarWater, let tare = frozenSugarMixBeakerTare else { return nil }
+        return water - tare
     }
     var hpIndividualGlucoseSyrup: Double? {
-        guard let gluc = hpGlucoseSyrup, let gran = hpGranulated else { return nil }
-        return gluc - gran
+        guard let gluc = hpGlucoseSyrup, let water = hpSugarWater else { return nil }
+        return gluc - water
     }
-    var hpIndividualSugarWater: Double? {
-        guard let water = hpSugarWater else { return nil }
-        let prev = hpGlucoseSyrup ?? hpGranulated
-        guard let p = prev else { return nil }
-        return water - p
+    var hpIndividualGranulated: Double? {
+        guard let gran = hpGranulated, let gluc = hpGlucoseSyrup else { return nil }
+        return gran - gluc
     }
     var hpSugarMixtureTotal: Double? {
-        guard let last = hpSugarWater, let tare = frozenSugarMixBeakerTare else { return nil }
+        guard let last = hpGranulated, let tare = frozenSugarMixBeakerTare else { return nil }
         return last - tare
     }
 
     // --- Activation Mix ---
-    var hpIndividualCitricAcid: Double? {
-        guard let citric = hpCitricAcid, let tare = frozenActivationTrayTare else { return nil }
-        return citric - tare
+    var hpIndividualActive: Double? {
+        guard let active = hpActive, let tare = frozenActivationTrayTare else { return nil }
+        return active - tare
     }
-    var hpIndividualActivationWater: Double? {
-        guard let water = hpActivationWater, let citric = hpCitricAcid else { return nil }
-        return water - citric
+    var hpIndividualCitricAcid: Double? {
+        guard let citric = hpCitricAcid, let active = hpActive else { return nil }
+        return citric - active
     }
     var hpIndividualKSorbate: Double? {
-        guard let k = hpKSorbate, let water = hpActivationWater else { return nil }
-        return k - water
+        guard let k = hpKSorbate, let citric = hpCitricAcid else { return nil }
+        return k - citric
     }
-    var hpIndividualFlavorOilsTerpsActive: Double? {
-        guard let flavor = hpFlavorOilsTerpsActive, let k = hpKSorbate else { return nil }
-        return flavor - k
+    var hpIndividualActivationWater: Double? {
+        guard let water = hpActivationWater, let k = hpKSorbate else { return nil }
+        return water - k
+    }
+    var hpIndividualAdditionalActivationWater: Double? {
+        guard let addl = hpAdditionalActivationWater, let water = hpActivationWater else { return nil }
+        return addl - water
+    }
+    var hpIndividualFlavorOils: Double? {
+        guard let oils = hpFlavorOils, let addl = hpAdditionalActivationWater else { return nil }
+        return oils - addl
+    }
+    var hpIndividualColor: Double? {
+        guard let color = hpColor, let oils = hpFlavorOils else { return nil }
+        return color - oils
+    }
+    var hpIndividualTerps: Double? {
+        guard let terps = hpTerps, let color = hpColor else { return nil }
+        return terps - color
     }
     var hpActivationMixtureTotal: Double? {
-        guard let last = hpFlavorOilsTerpsActive, let tare = frozenActivationTrayTare else { return nil }
+        guard let last = hpTerps, let tare = frozenActivationTrayTare else { return nil }
         let residue = hpActivationTrayResidue ?? 0
         return (last - tare) - residue
     }
@@ -1113,10 +1145,14 @@ extension BatchConfigViewModel {
         batch.hpGranulated = hpGranulated
         batch.hpGlucoseSyrup = hpGlucoseSyrup
         batch.hpSugarWater = hpSugarWater
+        batch.hpActive = hpActive
         batch.hpCitricAcid = hpCitricAcid
-        batch.hpActivationWater = hpActivationWater
         batch.hpKSorbate = hpKSorbate
-        batch.hpFlavorOilsTerpsActive = hpFlavorOilsTerpsActive
+        batch.hpActivationWater = hpActivationWater
+        batch.hpAdditionalActivationWater = hpAdditionalActivationWater
+        batch.hpFlavorOils = hpFlavorOils
+        batch.hpColor = hpColor
+        batch.hpTerps = hpTerps
         batch.hpActivationTrayResidue = hpActivationTrayResidue
 
         // HP equipment IDs
@@ -1125,6 +1161,7 @@ extension BatchConfigViewModel {
         batch.hpActivationTrayID = hpActivationTrayID
         batch.hpSubstrateStirBarID = hpSubstrateStirBarID
         batch.hpSugarMixStirBarID = hpSugarMixStirBarID
+        batch.hpActivationStirBarID = hpActivationStirBarID
         batch.hpSubstrateScaleID = hpSubstrateScaleID
         batch.hpSugarMixScaleID = hpSugarMixScaleID
         batch.hpActivationScaleID = hpActivationScaleID
@@ -1133,10 +1170,22 @@ extension BatchConfigViewModel {
         batch.hpSubstrateSugarTransfer = hpSubstrateSugarTransfer
         batch.hpSubstrateActivationTransfer = hpSubstrateActivationTransfer
 
-        // Frozen tare weights (snapshot from SystemConfig at save time)
-        batch.frozenSubstrateBeakerTare = hpSubstrateBeakerID.map { systemConfig.containerTare(for: $0) }
-        batch.frozenSugarMixBeakerTare = hpSugarMixBeakerID.map { systemConfig.containerTare(for: $0) }
-        batch.frozenActivationTrayTare = hpActivationTrayID.map { systemConfig.containerTare(for: $0) }
+        // Frozen tare weights (beaker + stir bar, snapshot from SystemConfig at save time)
+        batch.frozenSubstrateBeakerTare = hpSubstrateBeakerID.map { id in
+            let beaker = systemConfig.containerTare(for: id)
+            let stirBar = hpSubstrateStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+            return beaker + stirBar
+        }
+        batch.frozenSugarMixBeakerTare = hpSugarMixBeakerID.map { id in
+            let beaker = systemConfig.containerTare(for: id)
+            let stirBar = hpSugarMixStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+            return beaker + stirBar
+        }
+        batch.frozenActivationTrayTare = hpActivationTrayID.map { id in
+            let beaker = systemConfig.containerTare(for: id)
+            let stirBar = hpActivationStirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+            return beaker + stirBar
+        }
         batch.frozenTransferSyringeTare = hpTransferSyringeID.map { systemConfig.syringeTare(for: $0) }
         batch.frozenMoldsTrayTare = hpMoldsTrayID.map { systemConfig.containerTare(for: $0) }
 

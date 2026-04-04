@@ -145,11 +145,15 @@ final class BatchConfigViewModel {
         hpGranulated            = nil
         hpGlucoseSyrup          = nil
         hpSugarWater            = nil
-        hpCitricAcid            = nil
-        hpActivationWater       = nil
-        hpKSorbate              = nil
-        hpFlavorOilsTerpsActive = nil
-        hpActivationTrayResidue = nil
+        hpActive                    = nil
+        hpCitricAcid                = nil
+        hpKSorbate                  = nil
+        hpActivationWater           = nil
+        hpAdditionalActivationWater = nil
+        hpFlavorOils                = nil
+        hpColor                     = nil
+        hpTerps                     = nil
+        hpActivationTrayResidue     = nil
         hpSubstrateBeakerID     = nil
         hpSugarMixBeakerID      = nil
         hpActivationTrayID      = nil
@@ -402,10 +406,15 @@ final class BatchConfigViewModel {
     var hpSugarWater: Double? = nil
 
     // HP cumulative scale readings — Activation Mix
+    // Order: Active → Citric Acid → K Sorbate → Base Water → Additional Water → Flavor Oils → Terps
+    var hpActive: Double? = nil
     var hpCitricAcid: Double? = nil
-    var hpActivationWater: Double? = nil
     var hpKSorbate: Double? = nil
-    var hpFlavorOilsTerpsActive: Double? = nil
+    var hpActivationWater: Double? = nil
+    var hpAdditionalActivationWater: Double? = nil
+    var hpFlavorOils: Double? = nil
+    var hpColor: Double? = nil
+    var hpTerps: Double? = nil
     var hpActivationTrayResidue: Double? = nil
 
     // High-precision container selections (BeakerContainer.id or nil)
@@ -416,6 +425,7 @@ final class BatchConfigViewModel {
     // High-precision stir bar selections (StirBar.id or nil)
     var hpSubstrateStirBarID: String? = nil
     var hpSugarMixStirBarID: String? = nil
+    var hpActivationStirBarID: String? = nil
 
     // High-precision scale selections (ScaleSpec.id or nil)
     var hpSubstrateScaleID: String? = nil
@@ -536,40 +546,76 @@ final class BatchConfigViewModel {
 
     // MARK: HP Container Tare Helpers
 
-    /// Tare mass for the substrate beaker from the selected container in SystemConfig.
+    /// Tare mass for the substrate beaker + stir bar from the selected equipment in SystemConfig.
+    /// Falls back to recommended beaker / first stir bar when no explicit selection exists,
+    /// matching the defaults shown in WeightMeasurementsView.
     func hpSubstrateTare(systemConfig: SystemConfig) -> Double {
-        hpSubstrateBeakerID.map { systemConfig.containerTare(for: $0) } ?? 0
+        let result = BatchCalculator.calculate(viewModel: self, systemConfig: systemConfig)
+        let sugarOverage = 1.0 + systemConfig.sugarMixtureOveragePercent / 100.0
+        let substrateVol = result.gelatinMix.totalVolumeML + result.sugarMix.totalVolumeML * sugarOverage
+
+        let containerID = hpSubstrateBeakerID
+            ?? systemConfig.recommendedBeaker(forVolumeML: substrateVol)?.id
+        let beaker = containerID.map { systemConfig.containerTare(for: $0) } ?? 0
+
+        let stirBarID = hpSubstrateStirBarID ?? systemConfig.stirBars.first?.id
+        let stirBar = stirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+
+        return beaker + stirBar
     }
 
-    /// Tare mass for the sugar mix beaker from the selected container in SystemConfig.
+    /// Tare mass for the sugar mix beaker + stir bar from the selected equipment in SystemConfig.
+    /// Falls back to recommended beaker / first stir bar when no explicit selection exists,
+    /// matching the defaults shown in WeightMeasurementsView.
     func hpSugarMixTare(systemConfig: SystemConfig) -> Double {
-        hpSugarMixBeakerID.map { systemConfig.containerTare(for: $0) } ?? 0
+        let result = BatchCalculator.calculate(viewModel: self, systemConfig: systemConfig)
+        let sugarOverage = 1.0 + systemConfig.sugarMixtureOveragePercent / 100.0
+        let sugarVol = result.sugarMix.totalVolumeML * sugarOverage
+
+        let containerID = hpSugarMixBeakerID
+            ?? systemConfig.recommendedBeaker(forVolumeML: sugarVol)?.id
+        let beaker = containerID.map { systemConfig.containerTare(for: $0) } ?? 0
+
+        let stirBarID = hpSugarMixStirBarID ?? systemConfig.stirBars.first?.id
+        let stirBar = stirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+
+        return beaker + stirBar
     }
 
     /// Tare mass for the activation container from the selected container in SystemConfig.
+    /// Falls back to recommended beaker when no explicit selection exists,
+    /// matching the defaults shown in WeightMeasurementsView.
     func hpActivationTare(systemConfig: SystemConfig) -> Double {
-        hpActivationTrayID.map { systemConfig.containerTare(for: $0) } ?? 0
+        let result = BatchCalculator.calculate(viewModel: self, systemConfig: systemConfig)
+        let activVol = result.activationMix.totalVolumeML
+
+        let containerID = hpActivationTrayID
+            ?? systemConfig.recommendedBeaker(forVolumeML: activVol)?.id
+        let beaker = containerID.map { systemConfig.containerTare(for: $0) } ?? 0
+        let stirBarID = hpActivationStirBarID ?? systemConfig.stirBars.first?.id
+        let stirBar = stirBarID.map { systemConfig.stirBarMass(for: $0) } ?? 0
+        return beaker + stirBar
     }
 
     // MARK: HP Computed Totals (Net Mass = last cumulative reading − container tare)
 
-    /// HP Gelatin Mixture net mass = last reading (water) − container tare
+    /// HP Gelatin Mixture net mass = last reading (gelatin) − container tare
     func hpGelatinMixtureTotal(systemConfig: SystemConfig) -> Double? {
-        guard let last = hpGelatinWater else { return nil }
+        guard let last = hpGelatin else { return nil }
         let tare = hpSubstrateTare(systemConfig: systemConfig)
         return last - tare
     }
 
-    /// HP Sugar Mixture net mass = last reading (water) − container tare
+    /// HP Sugar Mixture net mass = last reading (granulated) − container tare
     func hpSugarMixtureTotal(systemConfig: SystemConfig) -> Double? {
-        guard let last = hpSugarWater else { return nil }
+        guard let last = hpGranulated else { return nil }
         let tare = hpSugarMixTare(systemConfig: systemConfig)
         return last - tare
     }
 
     /// HP Activation Mixture net mass = (last reading − container tare) − residue
     func hpActivationMixtureTotal(systemConfig: SystemConfig) -> Double? {
-        guard let last = hpFlavorOilsTerpsActive else { return nil }
+        guard let last = hpTerps else { return nil }
         let tare = hpActivationTare(systemConfig: systemConfig)
         let residue = hpActivationTrayResidue ?? 0
         return (last - tare) - residue
@@ -577,54 +623,74 @@ final class BatchConfigViewModel {
 
     // MARK: HP Derived Individual Masses (from consecutive cumulative readings)
 
-    func hpIndividualGelatin(systemConfig: SystemConfig) -> Double? {
-        guard let gel = hpGelatin else { return nil }
+    // Gelatin order: Water → Gelatin
+    func hpIndividualGelatinWater(systemConfig: SystemConfig) -> Double? {
+        guard let water = hpGelatinWater else { return nil }
         let tare = hpSubstrateTare(systemConfig: systemConfig)
-        return gel - tare
+        return water - tare
     }
 
-    var hpIndividualGelatinWater: Double? {
-        guard let water = hpGelatinWater, let gel = hpGelatin else { return nil }
-        return water - gel
+    var hpIndividualGelatin: Double? {
+        guard let gel = hpGelatin, let water = hpGelatinWater else { return nil }
+        return gel - water
     }
 
-    func hpIndividualGranulated(systemConfig: SystemConfig) -> Double? {
-        guard let gran = hpGranulated else { return nil }
+    // Sugar order: Water → Glucose Syrup → Granulated
+    func hpIndividualSugarWater(systemConfig: SystemConfig) -> Double? {
+        guard let water = hpSugarWater else { return nil }
         let tare = hpSugarMixTare(systemConfig: systemConfig)
-        return gran - tare
+        return water - tare
     }
 
     var hpIndividualGlucoseSyrup: Double? {
-        guard let gluc = hpGlucoseSyrup, let gran = hpGranulated else { return nil }
-        return gluc - gran
+        guard let gluc = hpGlucoseSyrup, let water = hpSugarWater else { return nil }
+        return gluc - water
     }
 
-    var hpIndividualSugarWater: Double? {
-        guard let water = hpSugarWater else { return nil }
-        let prev = hpGlucoseSyrup ?? hpGranulated
-        guard let p = prev else { return nil }
-        return water - p
+    var hpIndividualGranulated: Double? {
+        guard let gran = hpGranulated, let gluc = hpGlucoseSyrup else { return nil }
+        return gran - gluc
     }
 
-    func hpIndividualCitricAcid(systemConfig: SystemConfig) -> Double? {
-        guard let citric = hpCitricAcid else { return nil }
+    func hpIndividualActive(systemConfig: SystemConfig) -> Double? {
+        guard let active = hpActive else { return nil }
         let tare = hpActivationTare(systemConfig: systemConfig)
-        return citric - tare
+        return active - tare
     }
 
-    var hpIndividualActivationWater: Double? {
-        guard let water = hpActivationWater, let citric = hpCitricAcid else { return nil }
-        return water - citric
+    var hpIndividualCitricAcid: Double? {
+        guard let citric = hpCitricAcid, let active = hpActive else { return nil }
+        return citric - active
     }
 
     var hpIndividualKSorbate: Double? {
-        guard let k = hpKSorbate, let water = hpActivationWater else { return nil }
-        return k - water
+        guard let k = hpKSorbate, let citric = hpCitricAcid else { return nil }
+        return k - citric
     }
 
-    var hpIndividualFlavorOilsTerpsActive: Double? {
-        guard let flavor = hpFlavorOilsTerpsActive, let k = hpKSorbate else { return nil }
-        return flavor - k
+    var hpIndividualActivationWater: Double? {
+        guard let water = hpActivationWater, let k = hpKSorbate else { return nil }
+        return water - k
+    }
+
+    var hpIndividualAdditionalActivationWater: Double? {
+        guard let addl = hpAdditionalActivationWater, let water = hpActivationWater else { return nil }
+        return addl - water
+    }
+
+    var hpIndividualFlavorOils: Double? {
+        guard let oils = hpFlavorOils, let addl = hpAdditionalActivationWater else { return nil }
+        return oils - addl
+    }
+
+    var hpIndividualColor: Double? {
+        guard let color = hpColor, let oils = hpFlavorOils else { return nil }
+        return color - oils
+    }
+
+    var hpIndividualTerps: Double? {
+        guard let terps = hpTerps, let color = hpColor else { return nil }
+        return terps - color
     }
 
     /// HP Grand total = substrate+activation transfer if recorded, otherwise

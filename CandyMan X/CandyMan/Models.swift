@@ -89,8 +89,9 @@ enum Active: String, CaseIterable, Identifiable {
     case mdma       = "MDMA"
     case lsd        = "LSD"
     case psilocybin = "Shrooms"
-    case mescaline  = "Mesc"
-    case ketamine   = "Ket"
+    case mescaline  = "Mescaline"
+    case ketamine   = "Ketamine"
+    case twoCB      = "2C-B"
 
     var id: String { rawValue }
 
@@ -102,6 +103,7 @@ enum Active: String, CaseIterable, Identifiable {
         case .psilocybin: return .g
         case .mescaline:  return .mg
         case .ketamine:   return .mg
+        case .twoCB:      return .mg
         }
     }
 }
