@@ -7,9 +7,8 @@
 //  Layout:
 //    Gelatin Mix   – gelatin + water (with optional overage)
 //    Sugar Mix     – sugar + water (with optional overage)
-//    Activation Mix – preservative, colors, oils, terpenes, activation water
+//    Activation Mix – preservative solutions, colors, oils, terpenes, additional water
 //    Actives       – substance totals (LSD has tab-splitting math)
-//    Additional Water – user-adjustable extra dissolving water
 //
 //  Also contains BatchOutputFullScreenView for iPad full-screen display.
 //
@@ -23,7 +22,6 @@ struct BatchOutputView: View {
     @Environment(SystemConfig.self) private var systemConfig
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var showFullScreen = false
-    @State private var showAdditionalWaterPopup = false
     private var batchActivated: Bool { viewModel.batchActivated }
     @State private var showEspadaToast = false
 
@@ -53,17 +51,24 @@ struct BatchOutputView: View {
                     .font(.subheadline).foregroundStyle(CMTheme.textSecondary)
             }.padding(.horizontal, 16).padding(.vertical, 12)
 
-            mixSection(result.gelatinMix)
+            overageMixSection(result.gelatinMix, overagePercent: systemConfig.gelatinMixtureOveragePercent)
             spacerLine
             overageMixSection(result.sugarMix, overagePercent: systemConfig.sugarMixtureOveragePercent)
             spacerLine
+            preservativesSection(result.activationMix)
+            spacerLine
             activationMixSection(result.activationMix)
             spacerLine
-            activesSection
+            activesSection(result.activationMix)
             spacerLine
             if !batchActivated {
-                additionalWaterSection
                 activateBatchButton
+                Text("Add the activation mix before calculating the batch")
+                    .font(.system(size: 10, weight: .regular, design: .monospaced))
+                    .foregroundStyle(CMTheme.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 4)
             }
             Spacer().frame(height: 8)
         }
@@ -71,16 +76,6 @@ struct BatchOutputView: View {
             BatchOutputFullScreenView()
                 .environment(systemConfig)
                 .environment(viewModel)
-        }
-        .overlay {
-            if showAdditionalWaterPopup {
-                AdditionalWaterPopup {
-                    withAnimation(.cmSpring) { showAdditionalWaterPopup = false }
-                }
-                .environment(viewModel)
-                .environment(systemConfig)
-                .transition(.opacity)
-            }
         }
         .overlay {
             if showEspadaToast {
@@ -93,7 +88,6 @@ struct BatchOutputView: View {
                 .allowsHitTesting(false)
             }
         }
-        .animation(.cmSpring, value: showAdditionalWaterPopup)
         .animation(.cmSpring, value: batchActivated)
         .animation(.cmSpring, value: showEspadaToast)
     }
@@ -122,6 +116,9 @@ struct BatchOutputView: View {
             HStack {
                 Text(mix.name).cmSubsectionTitle()
                 Spacer()
+                Text(String(format: "%.1f mL", mix.totalVolumeML * factor))
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(CMTheme.textSecondary)
                 if overagePercent > 0 {
                     Text(String(format: "+%.0f%%", overagePercent))
                         .cmMono10().fontWeight(.semibold)
@@ -134,20 +131,11 @@ struct BatchOutputView: View {
                 HStack(spacing: 6) {
                     Text(comp.label).cmRowLabel()
                     Spacer()
-                    if batchActivated {
-                        if overagePercent > 0 {
-                            Text(String(format: "%.3f", comp.massGrams * factor))
-                                .cmValueSlot(width: 60, color: fuchsiaFlare)
-                        }
-                        Text(String(format: "%.3f", comp.massGrams)).cmValueSlot()
-                    } else {
-                        if overagePercent > 0 {
-                            Text("██████")
-                                .cmValueSlot(width: 60, color: CMTheme.textTertiary.opacity(0.4))
-                        }
-                        Text("██████")
-                            .cmValueSlot(color: CMTheme.textTertiary.opacity(0.4))
+                    if overagePercent > 0 {
+                        Text(String(format: "%.3f", comp.massGrams * factor))
+                            .cmValueSlot(width: 60, color: fuchsiaFlare)
                     }
+                    Text(String(format: "%.3f", comp.massGrams)).cmValueSlot()
                     Text(comp.displayUnit).cmUnitSlot()
                 }
                 .cmDataRowPadding()
@@ -170,24 +158,62 @@ struct BatchOutputView: View {
         }
     }
 
-    private func activationMixSection(_ mix: MixGroup) -> some View {
-        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+    private func preservativesSection(_ activationMix: MixGroup) -> some View {
+        let citricComp = activationMix.components.first { $0.label == "Citric Acid" }
+        let sorbateComp = activationMix.components.first { $0.label == "Potassium Sorbate" }
+        let citricRatio = systemConfig.citricAcidSolutionRatio
+        let sorbateRatio = systemConfig.kSorbateSolutionRatio
+
         return VStack(spacing: 0) {
-            HStack { Text(mix.name).cmSubsectionTitle(); Spacer() }
+            HStack { Text("Preservatives").cmSubsectionTitle(); Spacer() }
                 .cmSubsectionPadding()
 
-            ForEach(orderedCategories, id: \.rawValue) { category in
-                let items = mix.components.filter { $0.activationCategory == category }
-                if !items.isEmpty {
-                    if category != .preservative {
-                        HStack {
-                            Text(category.rawValue)
-                                .cmFootnote().fontWeight(.semibold)
-                            Spacer()
+            if let comp = citricComp {
+                let solutionMass = comp.massGrams * (1.0 + citricRatio)
+                HStack(spacing: 6) {
+                    Text(String(format: "+ Citric Acid 1:%.0f", citricRatio)).cmRowLabel()
+                    Spacer()
+                    Text(String(format: "%.3f", solutionMass)).cmValueSlot()
+                    Text("g").cmUnitSlot()
+                }.cmDataRowPadding()
+            }
+
+            if let comp = sorbateComp {
+                let solutionMass = comp.massGrams * (1.0 + sorbateRatio)
+                HStack(spacing: 6) {
+                    Text(String(format: "+ KSorbate 1:%.0f", sorbateRatio)).cmRowLabel()
+                    Spacer()
+                    Text(String(format: "%.3f", solutionMass)).cmValueSlot()
+                    Text("g").cmUnitSlot()
+                }.cmDataRowPadding()
+            }
+        }
+    }
+
+    private func activationMixSection(_ mix: MixGroup) -> some View {
+        let hiddenLabels: Set<String> = ["Citric Acid", "Potassium Sorbate", "LSD Transfer Water"]
+        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+        let visibleComponents = mix.components.filter { !hiddenLabels.contains($0.label) }
+        return Group {
+            if !visibleComponents.isEmpty {
+                VStack(spacing: 0) {
+                    HStack { Text(mix.name).cmSubsectionTitle(); Spacer() }
+                        .cmSubsectionPadding()
+
+                    ForEach(orderedCategories, id: \.rawValue) { category in
+                        let items = visibleComponents.filter { $0.activationCategory == category }
+                        if !items.isEmpty {
+                            if category != .preservative {
+                                HStack {
+                                    Text(category.rawValue)
+                                        .cmFootnote().fontWeight(.semibold)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 2)
+                            }
+                            ForEach(items) { comp in componentRow(comp) }
                         }
-                        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 2)
                     }
-                    ForEach(items) { comp in componentRow(comp) }
                 }
             }
         }
@@ -195,89 +221,43 @@ struct BatchOutputView: View {
 
     private func componentRow(_ comp: BatchComponent) -> some View {
         let colorMatch = GummyColor.allCases.first { "\($0.rawValue) Color" == comp.label }
-        let isActivationWaterModified = comp.label == "Activation Water" && viewModel.additionalActiveWaterML > 0
-        let isActivationWaterRow = comp.label == "Activation Water"
         let strawberryRed = systemConfig.designAlert
         let gold = systemConfig.designSecondaryAccent
 
-        // Compute kept volume for LSD so we can annotate Activation Water
-        let isLSD = viewModel.selectedActive == .lsd
-        let ugPerTab = viewModel.lsdUgPerTab
-        let totalWells = viewModel.totalGummies(using: systemConfig)
-        let totalActive = viewModel.activeConcentration * Double(totalWells)
-        let tabsNeeded = ugPerTab > 0 ? Int(totalActive / ugPerTab) : 0
-        let lsdInLiquid = totalActive - (Double(tabsNeeded) * ugPerTab)
-        let transferWater = systemConfig.lsdTransferWaterML
-        let keptVolume = (isLSD && ugPerTab > 0) ? (lsdInLiquid / ugPerTab) * transferWater : 0.0
-
         let valueColor: Color = CMTheme.textSecondary
+        let isAdditionalWater = comp.label == "Additional Water"
+        let isLSDTransfer = comp.label == "LSD Transfer Water"
 
-        return VStack(spacing: 0) {
-            HStack(spacing: 6) {
-                if let color = colorMatch {
-                    Circle().fill(color.swiftUIColor).frame(width: 10, height: 10)
-                }
-                Text(comp.label).cmRowLabel()
-                Spacer()
-                if comp.displayUnit == "µL" {
-                    Text(String(format: "%.0f", comp.volumeML * 1000.0))
-                        .cmValueSlot(color: valueColor)
-                } else if comp.displayUnit == "g" {
-                    Text(String(format: "%.3f", comp.massGrams))
-                        .cmValueSlot(color: valueColor)
-                } else {
-                    Text(String(format: "%.3f", comp.volumeML))
-                        .cmValueSlot(color: valueColor)
-                }
-                Text(comp.displayUnit).cmUnitSlot()
-            }.cmDataRowPadding()
-
-            // Activation Water breakdown: show when additional water added OR when LSD kept volume contributes
-            let showBreakdown = isActivationWaterRow && (isActivationWaterModified || (isLSD && keptVolume > 0))
-            if showBreakdown {
-                let baseWater = comp.volumeML - viewModel.additionalActiveWaterML - keptVolume
-                VStack(spacing: 1) {
-                    // Base activation water (before additions)
-                    HStack(spacing: 6) {
-                        Text("Base").cmFinePrint()
-                        Spacer()
-                        Text(String(format: "%.3f", baseWater))
-                            .cmColumnHeader()
-                        Text("").frame(width: 28, alignment: .leading)
-                    }
-                    // Additional dissolving water (red), only if present
-                    if viewModel.additionalActiveWaterML > 0 {
-                        HStack(spacing: 6) {
-                            Text("Additional Water")
-                                .cmMono10()
-                                .foregroundStyle(strawberryRed.opacity(0.8))
-                            Spacer()
-                            Text(String(format: "+%.3f", viewModel.additionalActiveWaterML))
-                                .cmMono10()
-                                .foregroundStyle(strawberryRed.opacity(0.8))
-                                .frame(width: 70, alignment: .trailing)
-                            Text("").frame(width: 28, alignment: .leading)
-                        }
-                    }
-                    // Kept transfer water (gold), only if LSD and non-zero
-                    if isLSD && keptVolume > 0 {
-                        HStack(spacing: 6) {
-                            Text("LSD Transfer Water")
-                                .cmMono10()
-                                .foregroundStyle(gold.opacity(0.9))
-                            Spacer()
-                            Text(String(format: "+%.3f", keptVolume))
-                                .cmMono10()
-                                .foregroundStyle(gold.opacity(0.9))
-                                .frame(width: 70, alignment: .trailing)
-                            Text("").frame(width: 28, alignment: .leading)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 2)
+        return HStack(spacing: 6) {
+            if let color = colorMatch {
+                Circle().fill(color.swiftUIColor).frame(width: 10, height: 10)
             }
-        }
+            if isAdditionalWater {
+                Text(comp.label)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(strawberryRed.opacity(0.8))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            } else if isLSDTransfer {
+                Text(comp.label)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(gold.opacity(0.9))
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            } else {
+                Text(comp.label).cmRowLabel()
+            }
+            Spacer()
+            if comp.displayUnit == "µL" {
+                Text(String(format: "%.0f", comp.volumeML * 1000.0))
+                    .cmValueSlot(color: valueColor)
+            } else if comp.displayUnit == "g" {
+                Text(String(format: "%.3f", comp.massGrams))
+                    .cmValueSlot(color: valueColor)
+            } else {
+                Text(String(format: "%.3f", comp.volumeML))
+                    .cmValueSlot(color: valueColor)
+            }
+            Text(comp.displayUnit).cmUnitSlot()
+        }.cmDataRowPadding()
     }
 
     private func redactedComponentRow(_ comp: BatchComponent) -> some View {
@@ -294,12 +274,13 @@ struct BatchOutputView: View {
         }.cmDataRowPadding()
     }
 
-    private var activesSection: some View {
+    private func activesSection(_ activationMix: MixGroup) -> some View {
         @Bindable var viewModel = viewModel
         let totalWells = viewModel.totalGummies(using: systemConfig)
         let totalActive = viewModel.activeConcentration * Double(totalWells)
         let unitLabel = viewModel.units.rawValue
         let gold = systemConfig.designSecondaryAccent
+        let lsdTransferComp = activationMix.components.first { $0.label == "LSD Transfer Water" }
 
         return VStack(spacing: 0) {
             HStack {
@@ -309,7 +290,6 @@ struct BatchOutputView: View {
             .cmSubsectionPadding()
 
             if viewModel.selectedActive == .lsd {
-                // Header row: "LSD ([concentration] μg / tab)" + total active μg
                 let ugPerTab = viewModel.lsdUgPerTab
                 HStack(spacing: 6) {
                     Text(String(format: "LSD (%.0f µg / tab)", ugPerTab))
@@ -322,17 +302,11 @@ struct BatchOutputView: View {
 
                 ThemedDivider(indent: 20).padding(.vertical, 4)
 
-                // Calculated tabs + LSD in liquid (remainder)
                 let tabsNeeded = Int(totalActive / ugPerTab)
                 let lsdInLiquid = totalActive - (Double(tabsNeeded) * ugPerTab)
 
-                // Transfer water calculations
-                let transferWater = systemConfig.lsdTransferWaterML
-                let keptVolume = ugPerTab > 0 ? (lsdInLiquid / ugPerTab) * transferWater : 0.0
-                let discardedVolume = transferWater - keptVolume
-
                 HStack(spacing: 6) {
-                    Text("Tabs").cmMono12().foregroundStyle(CMTheme.textPrimary)
+                    Text("Tabs").cmMono12().foregroundStyle(CMTheme.textPrimary).lineLimit(1)
                     Spacer()
                     Text("\(tabsNeeded)").cmValueSlot()
                     Text("#").cmUnitSlot()
@@ -347,52 +321,20 @@ struct BatchOutputView: View {
                 }
                 .cmDataRowPadding()
 
-                // Transfer water divider
-                ThemedDivider(indent: 20).padding(.vertical, 4)
-
-                // Total Transfer Water row
-                HStack(spacing: 6) {
-                    Text("Total Transfer Water").cmMono12().foregroundStyle(CMTheme.textPrimary)
-                    Spacer()
-                    Text(String(format: "%.3f", transferWater)).cmValueSlot()
-                    Text("mL").cmUnitSlot()
+                if lsdInLiquid > 0, let comp = lsdTransferComp {
+                    HStack(spacing: 6) {
+                        Text(comp.label)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(gold.opacity(0.9))
+                            .lineLimit(1).minimumScaleFactor(0.7)
+                        Spacer()
+                        Text(String(format: "%.3f", comp.volumeML)).cmValueSlot(color: gold)
+                        Text("ml").cmUnitSlot()
+                    }
+                    .cmDataRowPadding()
                 }
-                .cmDataRowPadding()
-
-                // Kept row (gold)
-                HStack(spacing: 6) {
-                    Text("Kept").cmMono12().foregroundStyle(CMTheme.textPrimary)
-                    Spacer()
-                    Text(String(format: "%.3f", keptVolume)).cmValueSlot(color: gold)
-                    Text("mL").cmUnitSlot()
-                }
-                .cmDataRowPadding()
-
-                // Discarded row
-                HStack(spacing: 6) {
-                    Text("Discarded").cmMono12().foregroundStyle(CMTheme.textPrimary)
-                    Spacer()
-                    Text(String(format: "%.3f", discardedVolume)).cmValueSlot()
-                    Text("mL").cmUnitSlot()
-                }
-                .cmDataRowPadding()
-
-                // Fine print instruction
-                Group {
-                    Text("Dissolve 1 Tab in \(String(format: "%.3f", transferWater)) mL of pure distilled water, let it dissolve, then transfer ")
-                        .foregroundStyle(CMTheme.textTertiary)
-                    + Text(String(format: "%.3f mL", keptVolume))
-                        .foregroundStyle(gold)
-                    + Text(" of the solution to the Activation Mix and discard \(String(format: "%.3f", discardedVolume)) mL of the remaining solution.")
-                        .foregroundStyle(CMTheme.textTertiary)
-                }
-                .cmMono10()
-                .padding(.horizontal, 20)
-                .padding(.top, 6)
-                .padding(.bottom, 2)
 
             } else {
-                // Non-LSD active: simple total row
                 HStack(spacing: 6) {
                     Text(viewModel.selectedActive.rawValue)
                         .cmMono12().foregroundStyle(CMTheme.textPrimary).lineLimit(1)
@@ -402,53 +344,6 @@ struct BatchOutputView: View {
                 }
                 .cmDataRowPadding()
             }
-        }
-    }
-
-    @ViewBuilder
-    private var additionalWaterSection: some View {
-        if batchActivated {
-            // Static text row (post-activation)
-            HStack(spacing: 6) {
-                Text("Additional Water for Dissolving Active")
-                    .cmRowLabel().lineLimit(2)
-                Spacer()
-                Text(String(format: "%.1f", viewModel.additionalActiveWaterML))
-                    .cmValueSlot(color: systemConfig.designAlert)
-                Text("mL").cmUnitSlot()
-            }
-            .padding(.horizontal, 20).padding(.vertical, 4)
-        } else {
-            // Psychedelic button (pre-activation)
-            Button {
-                CMHaptic.medium()
-                withAnimation(.cmSpring) { showAdditionalWaterPopup = true }
-            } label: {
-                HStack(spacing: 6) {
-                    Label("Additional Water for Dissolving Active", systemImage: "drop.fill")
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.7)
-                    Spacer()
-                    if viewModel.additionalActiveWaterML > 0 {
-                        Text(String(format: "%.1f mL", viewModel.additionalActiveWaterML))
-                            .font(.system(size: 12, weight: .bold, design: .monospaced))
-                            .foregroundStyle(systemConfig.designAlert)
-                    }
-                }
-                .padding(.vertical, 10)
-                .padding(.horizontal, 14)
-                .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
-                            .fill(CMTheme.chipBG)
-                        PsychedelicButton2()
-                    }
-                )
-            }
-            .buttonStyle(CMPressStyle())
-            .padding(.horizontal, 16).padding(.vertical, 4)
         }
     }
 
@@ -493,76 +388,6 @@ struct BatchOutputView: View {
     }
 }
 
-// MARK: - Additional Water Popup
-
-struct AdditionalWaterPopup: View {
-    @Environment(BatchConfigViewModel.self) private var viewModel
-    @Environment(SystemConfig.self) private var systemConfig
-    let onDismiss: () -> Void
-
-    @State private var editingValue: Double = 0.0
-
-    private var strawberryRed: Color { systemConfig.designAlert }
-
-    var body: some View {
-        @Bindable var viewModel = viewModel
-
-        CMPopupShell(
-            title: "Additional Water",
-            titleColor: strawberryRed,
-            onDismiss: onDismiss
-        ) {
-                VStack(spacing: 12) {
-                    Text("How much additional water for dissolving active?")
-                        .cmMono11()
-                        .foregroundStyle(CMTheme.textSecondary)
-                        .multilineTextAlignment(.center)
-
-                    HStack(spacing: 8) {
-                        NumericField(value: $editingValue, decimals: 1)
-                            .multilineTextAlignment(.center)
-                            .cmMono12()
-                            .foregroundStyle(strawberryRed)
-                            .frame(width: 80)
-                            .cmFieldStyle()
-
-                        Text("mL")
-                            .cmMono12()
-                            .foregroundStyle(CMTheme.textTertiary)
-                    }
-                }
-                .padding(.horizontal, 16).padding(.vertical, 16)
-
-                ThemedDivider()
-
-                // OK button
-                Button {
-                    CMHaptic.medium()
-                    viewModel.additionalActiveWaterML = editingValue
-                    onDismiss()
-                } label: {
-                    Text("OK")
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(
-                            ZStack {
-                                RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
-                                    .fill(CMTheme.chipBG)
-                                PsychedelicButton2()
-                            }
-                        )
-                }
-                .buttonStyle(CMPressStyle())
-                .padding(.horizontal, 16).padding(.vertical, 12)
-        }
-        .onAppear {
-            editingValue = viewModel.additionalActiveWaterML
-        }
-    }
-}
-
 // MARK: - Full Screen Batch Output (iPad)
 
 struct BatchOutputFullScreenView: View {
@@ -596,13 +421,15 @@ struct BatchOutputFullScreenView: View {
                     }
                     .padding(.horizontal, 32).padding(.vertical, 20)
 
-                    fullMixSection(result.gelatinMix)
+                    fullOverageMixSection(result.gelatinMix, overagePercent: systemConfig.gelatinMixtureOveragePercent)
                     fullDivider
                     fullOverageMixSection(result.sugarMix, overagePercent: systemConfig.sugarMixtureOveragePercent)
                     fullDivider
+                    fullPreservativesSection(result.activationMix)
+                    fullDivider
                     fullActivationMixSection(result.activationMix)
                     fullDivider
-                    fullActivesSection
+                    fullActivesSection(result.activationMix)
                     Spacer().frame(height: 40)
                 }
                 .padding(.horizontal, 16)
@@ -649,6 +476,9 @@ struct BatchOutputFullScreenView: View {
                     .font(.system(size: subHeaderSize, weight: .semibold, design: .monospaced))
                     .foregroundStyle(CMTheme.textSecondary)
                 Spacer()
+                Text(String(format: "%.1f mL", mix.totalVolumeML * factor))
+                    .font(.system(size: categorySize, design: .monospaced))
+                    .foregroundStyle(CMTheme.textSecondary)
                 if overagePercent > 0 {
                     Text(String(format: "+%.0f%%", overagePercent))
                         .font(.system(size: categorySize, weight: .semibold, design: .monospaced))
@@ -685,30 +515,64 @@ struct BatchOutputFullScreenView: View {
         }
     }
 
-    private func fullActivationMixSection(_ mix: MixGroup) -> some View {
-        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+    private func fullPreservativesSection(_ activationMix: MixGroup) -> some View {
+        let citricComp = activationMix.components.first { $0.label == "Citric Acid" }
+        let sorbateComp = activationMix.components.first { $0.label == "Potassium Sorbate" }
+        let citricRatio = systemConfig.citricAcidSolutionRatio
+        let sorbateRatio = systemConfig.kSorbateSolutionRatio
+
         return VStack(spacing: 0) {
             HStack {
-                Text(mix.name)
+                Text("Preservatives")
                     .font(.system(size: subHeaderSize, weight: .semibold, design: .monospaced))
                     .foregroundStyle(CMTheme.textSecondary)
                 Spacer()
             }
             .padding(.horizontal, 32).padding(.top, 16).padding(.bottom, 8)
 
-            ForEach(orderedCategories, id: \.rawValue) { category in
-                let items = mix.components.filter { $0.activationCategory == category }
-                if !items.isEmpty {
-                    if category != .preservative {
-                        HStack {
-                            Text(category.rawValue)
-                                .font(.system(size: categorySize, weight: .semibold, design: .monospaced))
-                                .foregroundStyle(CMTheme.textTertiary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 40).padding(.top, 12).padding(.bottom, 4)
+            if let comp = citricComp {
+                let solutionMass = comp.massGrams * (1.0 + citricRatio)
+                fullRow(String(format: "+ Citric Acid 1:%.0f", citricRatio),
+                        value: String(format: "%.3f", solutionMass), unit: "g")
+            }
+            if let comp = sorbateComp {
+                let solutionMass = comp.massGrams * (1.0 + sorbateRatio)
+                fullRow(String(format: "+ KSorbate 1:%.0f", sorbateRatio),
+                        value: String(format: "%.3f", solutionMass), unit: "g")
+            }
+        }
+    }
+
+    private func fullActivationMixSection(_ mix: MixGroup) -> some View {
+        let hiddenLabels: Set<String> = ["Citric Acid", "Potassium Sorbate", "LSD Transfer Water"]
+        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+        let visibleComponents = mix.components.filter { !hiddenLabels.contains($0.label) }
+        return Group {
+            if !visibleComponents.isEmpty {
+                VStack(spacing: 0) {
+                    HStack {
+                        Text(mix.name)
+                            .font(.system(size: subHeaderSize, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(CMTheme.textSecondary)
+                        Spacer()
                     }
-                    ForEach(items) { comp in fullComponentRow(comp) }
+                    .padding(.horizontal, 32).padding(.top, 16).padding(.bottom, 8)
+
+                    ForEach(orderedCategories, id: \.rawValue) { category in
+                        let items = visibleComponents.filter { $0.activationCategory == category }
+                        if !items.isEmpty {
+                            if category != .preservative {
+                                HStack {
+                                    Text(category.rawValue)
+                                        .font(.system(size: categorySize, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(CMTheme.textTertiary)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 40).padding(.top, 12).padding(.bottom, 4)
+                            }
+                            ForEach(items) { comp in fullComponentRow(comp) }
+                        }
+                    }
                 }
             }
         }
@@ -756,11 +620,12 @@ struct BatchOutputFullScreenView: View {
 
     // MARK: - Actives Section
 
-    private var fullActivesSection: some View {
+    private func fullActivesSection(_ activationMix: MixGroup) -> some View {
         let totalWells = viewModel.totalGummies(using: systemConfig)
         let totalActive = viewModel.activeConcentration * Double(totalWells)
         let unitLabel = viewModel.units.rawValue
         let gold = systemConfig.designSecondaryAccent
+        let lsdTransferComp = activationMix.components.first { $0.label == "LSD Transfer Water" }
 
         return VStack(spacing: 0) {
             HStack {
@@ -780,18 +645,12 @@ struct BatchOutputFullScreenView: View {
 
                 let tabsNeeded = Int(totalActive / ugPerTab)
                 let lsdInLiquid = totalActive - (Double(tabsNeeded) * ugPerTab)
-                let transferWater = systemConfig.lsdTransferWaterML
-                let keptVolume = ugPerTab > 0 ? (lsdInLiquid / ugPerTab) * transferWater : 0.0
-                let discardedVolume = transferWater - keptVolume
 
                 fullRow("Tabs", value: "\(tabsNeeded)", unit: "#")
                 fullRow("LSD in Liquid", value: String(format: "%.1f", lsdInLiquid), unit: "µg", valueColor: gold)
-
-                fullDivider
-
-                fullRow("Total Transfer Water", value: String(format: "%.3f", transferWater), unit: "mL")
-                fullRow("Kept", value: String(format: "%.3f", keptVolume), unit: "mL", valueColor: gold)
-                fullRow("Discarded", value: String(format: "%.3f", discardedVolume), unit: "mL")
+                if lsdInLiquid > 0, let comp = lsdTransferComp {
+                    fullRow("LSD Transfer Water", value: String(format: "%.3f", comp.volumeML), unit: "ml", valueColor: gold)
+                }
             } else {
                 fullRow(viewModel.selectedActive.rawValue,
                         value: String(format: "%.2f", totalActive), unit: unitLabel)

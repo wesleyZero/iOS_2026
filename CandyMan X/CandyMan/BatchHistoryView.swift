@@ -742,7 +742,7 @@ struct BatchDetailView: View {
         let wetMass: Double? = batch.wetGummyMassGrams ?? batch.calcMassMixTransferredToMold ?? {
             let t = sortedComponents.reduce(0.0) { $0 + $1.massGrams }; return t > 0 ? t : nil
         }()
-        let waterComponents = sortedComponents.filter { $0.label == "Water" || $0.label == "Activation Water" }
+        let waterComponents = sortedComponents.filter { $0.label == "Water" || $0.label == "Additional Water" || $0.label == "LSD Transfer Water" }
         let formulationWaterMass: Double? = waterComponents.isEmpty ? nil : waterComponents.reduce(0.0) { $0 + $1.massGrams }
         let theoreticalTotalMass = sortedComponents.reduce(0.0) { $0 + $1.massGrams }
         let waterMassFraction: Double? = {

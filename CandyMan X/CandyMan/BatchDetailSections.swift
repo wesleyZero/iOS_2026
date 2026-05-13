@@ -536,10 +536,10 @@ struct BatchHPMeasurementsSection: View {
     var body: some View {
         VStack(spacing: 0) {
             CMCollapsibleHeader(
-                title: "Batch Measurements",
+                title: "Tray Measurements",
                 isExpanded: $isExpanded,
                 accentColor: systemConfig.designTitle,
-                copyAction: { BatchDetailCopyUtility.copyJSON(hpMeasurementsJSON(), label: "Batch Measurements", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
+                copyAction: { BatchDetailCopyUtility.copyJSON(hpMeasurementsJSON(), label: "Tray Measurements", copiedConfirmation: $copiedConfirmation, copiedLabel: $copiedLabel) }
             )
 
             if isExpanded {
@@ -615,13 +615,18 @@ struct BatchHPMeasurementsSection: View {
 
                 // MARK: Transfer
                 hpSubsection("Transfer & Final Mixture")
+                if let id = batch.hpTrayTransferBeakerID { hpInfoRow("Tray Transfer Beaker", value: id) }
+                hpWeightRow("Tray Transfer Beaker", value: batch.hpTrayTransferBeakerReading)
                 if let id = batch.hpTransferSyringeID { hpInfoRow("Transfer Syringe", value: id) }
                 if let id = batch.hpTransferScaleID { hpInfoRow("Transfer Scale", value: id) }
                 hpWeightRow("Substrate + Sugar Transfer", value: batch.hpSubstrateSugarTransfer)
+                hpWeightRow("+ Gelatin Mix", value: batch.hpSubstrateGelatinTransfer)
+                hpWeightRow("+ KSorbate Transfer", value: batch.hpSubstrateKSorbateTransfer)
+                hpWeightRow("+ Citric Acid Transfer", value: batch.hpSubstrateCitricAcidTransfer)
                 hpWeightRow("Substrate + Activation Transfer", value: batch.hpSubstrateActivationTransfer)
 
                 // Transfer measurements
-                hpWeightRow("Syringe (Clean)", value: batch.weightSyringeEmpty)
+                hpWeightRow("Syringe (Clean)", value: batch.hpTransferSyringeReading ?? batch.weightSyringeEmpty)
                 hpWeightRow("Syringe + Gummy Mix", value: batch.weightSyringeWithMix)
                 hpVolumeRow("Syringe Gummy Mix Vol", value: batch.volumeSyringeGummyMix)
                 hpWeightRow("Syringe + Residue", value: batch.weightSyringeResidue)
@@ -920,7 +925,7 @@ struct BatchExperimentalData2Section: View {
         sortedComponents.first { $0.label == "Citric Acid" }?.massGrams ?? 0
     }
     private var theoActivationWaterMass: Double {
-        sortedComponents.first { $0.label == "Activation Water" }?.massGrams ?? 0
+        sortedComponents.filter { $0.label == "Additional Water" || $0.label == "LSD Transfer Water" }.reduce(0.0) { $0 + $1.massGrams }
     }
     private var theoKSorbateMass: Double {
         sortedComponents.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
@@ -1159,8 +1164,8 @@ struct BatchExperimentalData2Section: View {
                 comparisonRow("Active", theoretical: 0, experimental: expActiveMass)
                 comparisonRow("Citric Acid", theoretical: theoCitricAcidMass, experimental: expCitricAcidMass)
                 comparisonRow("Potassium Sorbate", theoretical: theoKSorbateMass, experimental: expKSorbateMass)
-                comparisonRow("(Base) Activation Water", theoretical: theoActivationWaterMass, experimental: expActivationWaterMass)
-                comparisonRow("Additional Activation Water", theoretical: 0, experimental: expAdditionalActivationWaterMass)
+                comparisonRow("(Base) Activation Water", theoretical: 0, experimental: expActivationWaterMass)
+                comparisonRow("Additional Activation Water", theoretical: theoActivationWaterMass, experimental: expAdditionalActivationWaterMass)
                 comparisonRow("Flavor Oils", theoretical: theoFlavorOilsMass, experimental: expFlavorOilsMass)
                 comparisonRow("Color", theoretical: theoColorMass, experimental: expColorMass)
                 comparisonRow("Terps", theoretical: theoTerpsMass, experimental: expTerpsMass)
@@ -2296,7 +2301,7 @@ struct BatchDryWeightSection: View {
 
     private var formulationWaterMass: Double? {
         let waterComponents = sortedComponents.filter {
-            $0.label == "Water" || $0.label == "Activation Water"
+            $0.label == "Water" || $0.label == "Additional Water" || $0.label == "LSD Transfer Water"
         }
         guard !waterComponents.isEmpty else { return nil }
         return waterComponents.reduce(0.0) { $0 + $1.massGrams }

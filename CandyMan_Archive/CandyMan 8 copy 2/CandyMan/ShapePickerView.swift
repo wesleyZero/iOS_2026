@@ -1,0 +1,712 @@
+import SwiftUI
+import SwiftData
+
+struct ShapePickerView: View {
+    @Environment(BatchConfigViewModel.self) private var viewModel
+    @Environment(SystemConfig.self) private var systemConfig
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.modelContext) private var modelContext
+    @State private var showSettings = false
+    @State private var showHistory  = false
+    @State private var showTemplates = false
+    @State private var showResetTemplateAlert = false
+    @State private var showSaveTemplateAlert = false
+    @State private var saveTemplateName = ""
+    @State private var showCandyManToast = false
+    @State private var showResetBatchAlert = false
+    @State private var showSaveSheet = false
+    @State private var saveName = ""
+    @State private var saveBatchID = ""
+    @State private var savedConfirmation = false
+
+    private var isRegular: Bool { sizeClass == .regular }
+
+    private var shapeColumns: [GridItem] {
+        isRegular
+            ? [GridItem(.adaptive(minimum: 140))]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+    }
+
+    // MARK: - Readiness check
+
+    private var canCalculate: Bool {
+        // Flavors: each type must be locked with blends summing to 100
+        let terpenes = viewModel.selectedFlavors.keys.filter { if case .terpene = $0 { return true }; return false }
+        let oils     = viewModel.selectedFlavors.keys.filter { if case .oil     = $0 { return true }; return false }
+        let terpTotal = terpenes.reduce(0.0) { $0 + (viewModel.selectedFlavors[$1] ?? 0) }
+        let oilTotal  = oils.reduce(0.0)    { $0 + (viewModel.selectedFlavors[$1] ?? 0) }
+        let terpsOK  = terpenes.isEmpty || (viewModel.terpenesLocked && abs(terpTotal - 100) < 0.5)
+        let oilsOK   = oils.isEmpty     || (viewModel.oilsLocked     && abs(oilTotal  - 100) < 0.5)
+        let flavorsOK = terpsOK && oilsOK
+
+        // Colors: if any selected, blend must sum to 100
+        let colorTotal = viewModel.colorBlendTotal
+        let colorsOK   = viewModel.selectedColors.isEmpty
+                      || (viewModel.colorsLocked && abs(colorTotal - 100) < 0.5)
+
+        return flavorsOK && colorsOK
+    }
+
+    var body: some View {
+        @Bindable var viewModel = viewModel
+        ScrollViewReader { scrollProxy in
+        ScrollView {
+            VStack(spacing: 12) {
+                // ── Input cards / summary ──
+                Color.clear.frame(height: 0).id("scrollTop")
+                if viewModel.batchCalculated {
+                    // ── Post-calculate: summary + output ──
+                    if isRegular {
+                        // iPad: summary spans top
+                        InputSummaryView().cardStyle()
+                            .frame(maxWidth: 600)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+
+                        // iPad: two-column output
+                        HStack(alignment: .top, spacing: 0) {
+                            VStack(spacing: 12) {
+                                BatchOutputView().cardStyle()
+                                BatchValidationView().cardStyle()
+                                RelativeFractionsView().cardStyle()
+                                CalibrationMeasurementsView().cardStyle()
+                                SigFigsCardView().cardStyle()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                            VStack(spacing: 12) {
+                                WeightMeasurementsView().cardStyle()
+                                MeasurementCalculationsView().cardStyle()
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+
+                        resetSection.cardStyle()
+                            .frame(maxWidth: 400)
+                            .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    } else {
+                        // iPhone: single column
+                        InputSummaryView().cardStyle()
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+
+                        BatchOutputView().cardStyle()
+                        BatchValidationView().cardStyle()
+                        RelativeFractionsView().cardStyle()
+                        WeightMeasurementsView().cardStyle()
+                        CalibrationMeasurementsView().cardStyle()
+                        MeasurementCalculationsView().cardStyle()
+                        SigFigsCardView().cardStyle()
+                        resetSection.cardStyle()
+                    }
+                } else if isRegular {
+                    // ── iPad pre-calculate: two-column input grid ──
+                    HStack(alignment: .top, spacing: 0) {
+                        VStack(spacing: 12) {
+                            templateSection.cardStyle()
+                            chooseShape.cardStyle()
+                            chooseTrays(viewModel: viewModel).cardStyle()
+                            FlavorOilPickerView().cardStyle()
+                            TerpenePickerView().cardStyle()
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        VStack(spacing: 12) {
+                            chooseActive(viewModel: viewModel).cardStyle()
+                            chooseGelatin(viewModel: viewModel).cardStyle()
+                            ColorPickerView().cardStyle()
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+
+                    calculateBatchSection.cardStyle()
+                        .frame(maxWidth: 500)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                } else {
+                    // ── iPhone pre-calculate: single column ──
+                    VStack(spacing: 12) {
+                        templateSection.cardStyle()
+                        chooseShape.cardStyle()
+                        chooseTrays(viewModel: viewModel).cardStyle()
+                        chooseActive(viewModel: viewModel).cardStyle()
+                        chooseGelatin(viewModel: viewModel).cardStyle()
+                        FlavorOilPickerView().cardStyle()
+                        TerpenePickerView().cardStyle()
+                        Spacer().frame(height: 4)
+                        ColorPickerView().cardStyle()
+                        Spacer().frame(height: 4)
+                        calculateBatchSection.cardStyle()
+                    }
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                Color.clear.frame(height: 0).id("scrollBottom")
+            }
+            .frame(maxWidth: isRegular ? 1100 : .infinity)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+        }
+        .onChange(of: viewModel.batchCalculated) { _, calculated in
+            if calculated {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    withAnimation(.cmSpring) {
+                        scrollProxy.scrollTo("scrollTop", anchor: .top)
+                    }
+                }
+            }
+        }
+        .onChange(of: viewModel.templateInputsChanged) { _, changed in
+            if changed, viewModel.activeTemplateID != nil {
+                withAnimation(.cmSpring) {
+                    viewModel.activeTemplateID = nil
+                    viewModel.activeTemplateName = ""
+                }
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            ScrollToBottomButton {
+                CMHaptic.light()
+                withAnimation(.cmSpring) {
+                    scrollProxy.scrollTo("scrollBottom", anchor: .bottom)
+                }
+            }
+            .padding(.leading, 16)
+            .padding(.bottom, 16)
+        }
+        } // ScrollViewReader
+        .navigationTitle("Gummy Batch")
+        .background(CMTheme.pageBG)
+        .scrollDismissesKeyboard(.immediately)
+        .preferredColorScheme(.dark)
+        .overlay {
+            if showCandyManToast {
+                Text("Because the CandyMan can!!")
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(
+                        Capsule()
+                            .fill(systemConfig.accent.opacity(0.9))
+                            .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                    )
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)).combined(with: .move(edge: .top)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 60)
+                    .allowsHitTesting(false)
+            }
+        }
+        .keyboardDismissToolbar()
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showHistory = true } label: {
+                    Image(systemName: "book.circle")
+                        .foregroundStyle(CMTheme.textSecondary)
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape.fill").foregroundStyle(CMTheme.textSecondary)
+                }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView().environment(systemConfig).environment(viewModel)
+        }
+        .sheet(isPresented: $showHistory) {
+            BatchHistoryView()
+        }
+        .sheet(isPresented: $showTemplates) {
+            TemplateListView()
+        }
+    }
+
+    // MARK: - Calculate Section
+
+    private var calculateBatchSection: some View {
+        VStack(spacing: 8) {
+            HStack {
+                Text("Calculate Batch")
+                    .font(.headline)
+                    .foregroundStyle(CMTheme.textPrimary)
+                Spacer()
+                if viewModel.activeTemplateID != nil {
+                    HStack(spacing: 6) {
+                        Text("Info \(Text("saved").foregroundColor(Color(red: 0.929, green: 0.278, blue: 0.290))) as \(Text(viewModel.activeTemplateName).foregroundColor(Color(red: 0.929, green: 0.278, blue: 0.290)))")
+                            .font(.caption)
+                            .foregroundStyle(CMTheme.textTertiary)
+                        Image(systemName: "square.and.arrow.down.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(CMTheme.textTertiary)
+                    }
+                } else {
+                    Button {
+                        CMHaptic.medium()
+                        saveTemplateName = ""
+                        showSaveTemplateAlert = true
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("Info \(canCalculate ? Text("not saved").foregroundColor(Color(red: 0.929, green: 0.278, blue: 0.290)) : Text("not saved")) as template")
+                                .font(.caption)
+                                .foregroundStyle(CMTheme.textTertiary)
+                            Image(systemName: "square.and.arrow.down")
+                                .font(.system(size: 14))
+                                .foregroundStyle(CMTheme.textTertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+
+            if !canCalculate {
+                Text("All selected flavor and color blends must sum to 100%")
+                    .font(.caption).foregroundStyle(CMTheme.textTertiary)
+                    .padding(.horizontal, 16)
+            }
+
+            Button {
+                CMHaptic.heavy()
+                withAnimation(.cmSpring) {
+                    viewModel.batchCalculated = true
+                    showCandyManToast = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+                    withAnimation(.easeOut(duration: 0.4)) { showCandyManToast = false }
+                }
+            } label: {
+                Label("Calculate", systemImage: "function")
+                    .modifier(CMButtonStyle(color: systemConfig.accent, isDisabled: !canCalculate))
+            }
+            .buttonStyle(CMPressStyle())
+            .disabled(!canCalculate)
+            .padding(.horizontal, 16).padding(.bottom, 12)
+        }
+        .alert("Save as Template", isPresented: $showSaveTemplateAlert) {
+            TextField("Template Name", text: $saveTemplateName)
+            Button("Cancel", role: .cancel) { }
+            Button("Save") {
+                let trimmed = saveTemplateName.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty else { return }
+                CMHaptic.success()
+                viewModel.saveAsTemplate(name: trimmed, modelContext: modelContext)
+            }
+        } message: {
+            Text("Enter a name for this template.")
+        }
+    }
+
+    // MARK: - Reset Section
+
+    private var resetSection: some View {
+        VStack(spacing: 8) {
+            CMSectionHeader(title: "New Batch")
+            Button {
+                CMHaptic.medium()
+                let result = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
+                if systemConfig.developerMode {
+                    saveName = "DevMode | Dataset01"
+                    saveBatchID = "XX"
+                } else {
+                    saveName = ""
+                    saveBatchID = systemConfig.nextBatchID()
+                }
+                showSaveSheet = true
+                _ = result
+            } label: {
+                Label("Save Batch", systemImage: "square.and.arrow.down")
+                    .modifier(CMButtonStyle(color: systemConfig.accent))
+            }
+            .buttonStyle(CMPressStyle())
+            .padding(.horizontal, 16)
+            Button {
+                CMHaptic.medium()
+                showResetBatchAlert = true
+            } label: {
+                Label("Reset", systemImage: "arrow.counterclockwise")
+                    .modifier(CMButtonStyle(color: CMTheme.chipBG, isDisabled: false))
+                    .foregroundStyle(CMTheme.textPrimary)
+            }
+            .buttonStyle(CMPressStyle())
+            .padding(.horizontal, 16).padding(.bottom, 12)
+            .alert("Reset Batch?", isPresented: $showResetBatchAlert) {
+                Button("Reset", role: .destructive) {
+                    CMHaptic.medium()
+                    withAnimation(.cmSpring) { viewModel.resetBatch(systemConfig: systemConfig) }
+                }
+                Button("Cancel", role: .cancel) { }
+            } message: {
+                Text("All current batch inputs will be cleared.")
+            }
+        }
+        .sheet(isPresented: $showSaveSheet) {
+            let result = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
+            SaveBatchSheet(
+                saveName: $saveName,
+                saveBatchID: $saveBatchID,
+                onSave: { saveBatch(result: result) }
+            )
+            .presentationDetents([.height(280)])
+        }
+        .overlay(alignment: .top) {
+            if savedConfirmation {
+                Text("Batch saved!")
+                    .font(.subheadline).fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20).padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: CMTheme.chipRadius, style: .continuous)
+                            .fill(CMTheme.success)
+                    )
+                    .padding(.top, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.3), value: savedConfirmation)
+    }
+
+    private func saveBatch(result: BatchResult) {
+        let batch = viewModel.makeSavedBatch(
+            name: saveName.isEmpty ? "Batch \(Date.now.formatted(date: .abbreviated, time: .shortened))" : saveName,
+            batchID: saveBatchID.isEmpty ? "AA" : saveBatchID.uppercased(),
+            result: result,
+            systemConfig: systemConfig
+        )
+        modelContext.insert(batch)
+        showSaveSheet = false
+        CMHaptic.success()
+        savedConfirmation = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            savedConfirmation = false
+        }
+    }
+
+    // MARK: - Input Sections
+
+    private func chooseGelatin(viewModel: BatchConfigViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        let result = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
+
+        return VStack(spacing: 4) {
+            sectionHeader(title: "Gelatin", detail: nil,
+                          showReset: viewModel.gelatinPercentage != 5.225) {
+                viewModel.gelatinPercentage = 5.225
+            }
+            HStack {
+                TextField("0.0", value: $viewModel.gelatinPercentage,
+                          format: .number.precision(.fractionLength(1...3)))
+                    .keyboardType(.decimalPad).multilineTextAlignment(.center)
+                    .font(.system(size: 30, weight: .bold)).foregroundStyle(CMTheme.textPrimary).frame(width: 120).selectAllOnFocus()
+                Text("%").font(.system(size: 20)).foregroundStyle(CMTheme.textSecondary)
+            }.padding(.horizontal, 24).padding(.vertical, 12)
+            Text("Volume percentage of gelatin in the gummy mixture.")
+                .font(.caption).foregroundStyle(CMTheme.textTertiary)
+                .padding(.horizontal, 16).padding(.bottom, 8)
+        }
+    }
+
+    // MARK: - Templates
+
+    private var templateSection: some View {
+        VStack(spacing: 8) {
+            Button {
+                CMHaptic.medium()
+                showTemplates = true
+            } label: {
+                HStack {
+                    Image(systemName: "doc.on.doc")
+                        .foregroundStyle(systemConfig.accent)
+                    Text("Templates")
+                        .font(.headline)
+                        .foregroundStyle(CMTheme.textPrimary)
+                    if viewModel.activeTemplateID != nil {
+                        Button {
+                            CMHaptic.medium()
+                            showResetTemplateAlert = true
+                        } label: {
+                            Image(systemName: "arrow.counterclockwise.circle")
+                                .foregroundStyle(Color(red: 0.929, green: 0.278, blue: 0.290))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption)
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if viewModel.activeTemplateID != nil {
+                Text("The \(Text(viewModel.activeTemplateName).foregroundColor(Color(red: 0.929, green: 0.278, blue: 0.290))) template is being used.")
+                    .font(.caption)
+                    .foregroundStyle(CMTheme.textTertiary)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
+            } else {
+                Text("No template is being used")
+                    .font(.caption)
+                    .foregroundStyle(CMTheme.textTertiary)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
+            }
+        }
+        .alert("Reset to Defaults", isPresented: $showResetTemplateAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                CMHaptic.medium()
+                withAnimation(.cmSpring) {
+                    viewModel.clearTemplate(systemConfig: systemConfig)
+                }
+            }
+        } message: {
+            Text("This will remove the current template and reset all inputs back to default values.")
+        }
+    }
+
+    // MARK: - Shape
+
+    private var chooseShape: some View {
+        VStack(spacing: 0) {
+            sectionHeader(title: "Shape",
+                          detail: String(format: "%.3f ml / mold",
+                                         systemConfig.spec(for: viewModel.selectedShape).volume_ml),
+                          showReset: viewModel.selectedShape != .newBear) {
+                viewModel.selectedShape = .newBear
+            }
+            LazyVGrid(columns: shapeColumns, spacing: 12) {
+                ForEach(GummyShape.allCases) { shape in shapeButton(for: shape) }
+            }.padding(12)
+        }
+    }
+
+    private func chooseTrays(viewModel: BatchConfigViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        @Bindable var systemConfig = systemConfig
+        return VStack(spacing: 4) {
+            sectionHeader(title: "Trays",
+                          detail: "\(systemConfig.spec(for: viewModel.selectedShape).count) per tray",
+                          showReset: viewModel.trayCount != 1) {
+                viewModel.trayCount = 1
+            }
+            HStack {
+                Button {
+                    CMHaptic.selection()
+                    withAnimation(.cmSpring) { viewModel.trayCount = max(1, viewModel.trayCount - 1) }
+                } label: {
+                    Image(systemName: "minus.circle.fill").font(.system(size: 30)).foregroundStyle(systemConfig.accent)
+                }
+                Spacer()
+                Text("\(viewModel.trayCount)")
+                    .font(.system(size: 20, weight: .bold)).foregroundStyle(CMTheme.textPrimary)
+                    .contentTransition(.numericText())
+                Text("Tray\(viewModel.trayCount == 1 ? "" : "s")").font(.system(size: 20)).foregroundStyle(CMTheme.textSecondary)
+                Spacer()
+                Button {
+                    CMHaptic.selection()
+                    withAnimation(.cmSpring) { viewModel.trayCount = min(20, viewModel.trayCount + 1) }
+                } label: {
+                    Image(systemName: "plus.circle.fill").font(.system(size: 36)).foregroundStyle(systemConfig.accent)
+                }
+            }.padding(.horizontal, 24).padding(.vertical, 12)
+            Text("\(viewModel.trayCount) \(viewModel.selectedShape.rawValue.lowercased()) tray\(viewModel.trayCount == 1 ? "" : "s") = \(viewModel.trayCount * systemConfig.spec(for: viewModel.selectedShape).count) units")
+                .font(.caption).foregroundStyle(CMTheme.textTertiary)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private func chooseActive(viewModel: BatchConfigViewModel) -> some View {
+        @Bindable var viewModel = viewModel
+        let activesChanged = viewModel.selectedActive != .LSD
+            || viewModel.activeConcentration != 10.0
+            || viewModel.lsdUgPerTab != 117.0
+        return VStack(spacing: 8) {
+            sectionHeader(title: "Actives",
+                          detail: "\(String(format: "%.1f", viewModel.activeConcentration)) \(viewModel.units.rawValue) \(viewModel.selectedActive.rawValue) / gummy",
+                          showReset: activesChanged) {
+                viewModel.selectedActive = .LSD
+                viewModel.activeConcentration = 10.0
+                viewModel.lsdUgPerTab = 117.0
+            }
+            HStack {
+                Picker("Substance", selection: $viewModel.selectedActive) {
+                    ForEach(Active.allCases) { s in Text(s.rawValue).tag(s) }
+                }
+            }.pickerStyle(.segmented).padding(.horizontal, 16)
+            .onChange(of: viewModel.selectedActive) { CMHaptic.selection() }
+            HStack {
+                TextField("0.0", value: $viewModel.activeConcentration,
+                          format: .number.precision(.fractionLength(1...6)))
+                    .keyboardType(.decimalPad).multilineTextAlignment(.center)
+                    .font(.system(size: 30, weight: .bold)).foregroundStyle(CMTheme.textPrimary).frame(width: 120).selectAllOnFocus()
+                Text(viewModel.selectedActive.unit.rawValue).font(.system(size: 20)).foregroundStyle(CMTheme.textSecondary)
+            }.padding(.horizontal, 24).padding(.vertical, 12)
+
+            if viewModel.selectedActive == .LSD {
+                Divider().padding(.horizontal, 16)
+                HStack {
+                    Text("µg per tab").font(.subheadline).foregroundStyle(CMTheme.textSecondary)
+                    Spacer()
+                    TextField("100", value: $viewModel.lsdUgPerTab,
+                              format: .number.precision(.fractionLength(0...1)))
+                        .keyboardType(.decimalPad).multilineTextAlignment(.center)
+                        .font(.system(size: 22, weight: .bold)).frame(width: 90).selectAllOnFocus()
+                    Text("µg").font(.system(size: 18)).foregroundStyle(CMTheme.textSecondary)
+                }.padding(.horizontal, 24).padding(.bottom, 12)
+            }
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func sectionHeader(title: String, detail: String? = nil, showReset: Bool = false, onReset: (() -> Void)? = nil) -> some View {
+        HStack {
+            Text(title).font(.headline).foregroundStyle(CMTheme.textPrimary)
+            if showReset {
+                Button {
+                    CMHaptic.light()
+                    withAnimation(.cmSpring) { onReset?() }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 13))
+                        .foregroundStyle(CMTheme.textTertiary)
+                }
+                .buttonStyle(.plain)
+                .transition(.scale.combined(with: .opacity))
+            }
+            Spacer()
+            if let detail { Text(detail).font(.subheadline).foregroundStyle(CMTheme.textSecondary) }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    private func shapeButton(for shape: GummyShape) -> some View {
+        let sel = viewModel.selectedShape == shape
+        return Button {
+            CMHaptic.medium()
+            withAnimation(.cmSpring) { viewModel.selectedShape = shape }
+        } label: {
+            VStack(spacing: 10) {
+                Image(systemName: shape.sfSymbol).font(.system(size: 34))
+                Text(shape.rawValue).font(.subheadline).fontWeight(.medium)
+            }
+            .foregroundStyle(sel ? systemConfig.accent : CMTheme.textSecondary)
+            .frame(maxWidth: .infinity, minHeight: 90)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
+                    .fill(sel ? systemConfig.accent.opacity(0.12) : CMTheme.fieldBG)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: CMTheme.buttonRadius, style: .continuous)
+                    .stroke(sel ? systemConfig.accent.opacity(0.5) : Color.clear, lineWidth: 1.5)
+            )
+            .contentShape(Rectangle())
+            .animation(.cmSpring, value: sel)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Input Summary (post-calculate)
+
+struct InputSummaryView: View {
+    @Environment(BatchConfigViewModel.self) private var viewModel
+    @Environment(SystemConfig.self) private var systemConfig
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Batch Configuration").font(.headline).foregroundStyle(CMTheme.textPrimary)
+                Spacer()
+            }
+            .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
+
+            let spec = systemConfig.spec(for: viewModel.selectedShape)
+            let wellCount = spec.count * viewModel.trayCount
+
+            // Core inputs
+            summaryRow("Shape", value: viewModel.selectedShape.rawValue)
+            summaryRow("Trays", value: "\(viewModel.trayCount)  (\(wellCount) gummies)")
+            summaryRow("Active", value: viewModel.selectedActive.rawValue)
+            summaryRow("Concentration", value: String(format: "%.2f %@ / gummy", viewModel.activeConcentration, viewModel.units.rawValue))
+            summaryRow("Gelatin %", value: String(format: "%.3f%%", viewModel.gelatinPercentage))
+
+            // Terpenes
+            let terpenes = viewModel.selectedFlavors.filter { if case .terpene = $0.key { return true }; return false }
+            if !terpenes.isEmpty {
+                summarySubheader("Terpenes")
+                summaryRow("PPM", value: String(format: "%.1f", viewModel.terpeneVolumePPM))
+                ForEach(terpenes.sorted(by: { $0.key.id < $1.key.id }), id: \.key) { flavor, pct in
+                    summaryRow(flavor.displayName, value: String(format: "%.0f%%", pct))
+                }
+            }
+
+            // Flavor Oils
+            let oils = viewModel.selectedFlavors.filter { if case .oil = $0.key { return true }; return false }
+            if !oils.isEmpty {
+                summarySubheader("Flavor Oils")
+                summaryRow("Volume %", value: String(format: "%.3f%%", viewModel.flavorOilVolumePercent))
+                ForEach(oils.sorted(by: { $0.key.id < $1.key.id }), id: \.key) { flavor, pct in
+                    summaryRow(flavor.displayName, value: String(format: "%.0f%%", pct))
+                }
+            }
+
+            // Colors
+            if !viewModel.selectedColors.isEmpty {
+                summarySubheader("Colors")
+                summaryRow("Volume %", value: String(format: "%.3f%%", viewModel.colorVolumePercent))
+                ForEach(viewModel.selectedColors.sorted(by: { $0.key.rawValue < $1.key.rawValue }), id: \.key) { color, pct in
+                    summaryRow(color.rawValue, value: String(format: "%.0f%%", pct))
+                }
+            }
+
+            Spacer().frame(height: 8)
+        }
+    }
+
+    private func summaryRow(_ label: String, value: String) -> some View {
+        HStack(spacing: 6) {
+            Text(label).font(.system(size: 12, design: .monospaced)).foregroundStyle(CMTheme.textPrimary).lineLimit(1)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12, design: .monospaced)).foregroundStyle(CMTheme.textSecondary)
+        }
+        .padding(.horizontal, 20).padding(.vertical, 3)
+    }
+
+    private func summarySubheader(_ title: String) -> some View {
+        HStack {
+            Text(title).font(.caption).fontWeight(.semibold).foregroundStyle(CMTheme.textSecondary)
+            Spacer()
+        }
+        .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 2)
+    }
+}
+
+struct CardStyle: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var sizeClass
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: CMTheme.cardRadius, style: .continuous)
+                    .fill(CMTheme.cardBG)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: CMTheme.cardRadius, style: .continuous)
+                            .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
+                    )
+                    .shadow(color: CMTheme.cardShadow, radius: CMTheme.cardShadowRadius, x: 0, y: 6)
+            )
+            .padding(.horizontal, sizeClass == .regular ? 24 : 16)
+            .padding(.vertical, 6)
+    }
+}
+extension View { func cardStyle() -> some View { modifier(CardStyle()) } }

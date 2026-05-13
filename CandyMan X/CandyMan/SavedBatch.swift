@@ -211,9 +211,18 @@ class SavedBatch {
 
     // HP transfer syringe/scale selections
     var hpTransferSyringeID: String?
+    var hpTransferSyringeReading: Double?
     var hpTransferScaleID: String?
     var hpMoldsTrayID: String?
     var hpMoldsScaleID: String?
+
+    // HP measured container/stir bar scale readings
+    var hpSubstrateBeakerReading: Double?
+    var hpSubstrateStirBarReading: Double?
+    var hpSugarBeakerReading: Double?
+    var hpSugarStirBarReading: Double?
+    var hpActivationContainerReading: Double?
+    var hpActivationStirBarReading: Double?
 
     // HP cumulative scale readings — Gelatin Mix
     var hpGelatin: Double?
@@ -240,6 +249,7 @@ class SavedBatch {
     var hpSubstrateBeakerID: String?
     var hpSugarMixBeakerID: String?
     var hpActivationTrayID: String?
+    var hpTrayTransferBeakerID: String?
     var hpSubstrateStirBarID: String?
     var hpSugarMixStirBarID: String?
     var hpActivationStirBarID: String?
@@ -247,8 +257,14 @@ class SavedBatch {
     var hpSugarMixScaleID: String?
     var hpActivationScaleID: String?
 
+    // HP tray transfer beaker reading
+    var hpTrayTransferBeakerReading: Double?
+
     // HP transfer readings
     var hpSubstrateSugarTransfer: Double?
+    var hpSubstrateGelatinTransfer: Double?
+    var hpSubstrateKSorbateTransfer: Double?
+    var hpSubstrateCitricAcidTransfer: Double?
     var hpSubstrateActivationTransfer: Double?
 
     // Frozen tare weights (snapshot at save time)
@@ -539,6 +555,7 @@ struct SavedBatchDTO: Codable {
     var weightTrayPlusResidue: Double?
     var extraGummyMixGrams: Double?
     var hpTransferSyringeID: String?
+    var hpTransferSyringeReading: Double?
     var hpTransferScaleID: String?
     var hpMoldsTrayID: String?
     var hpMoldsScaleID: String?
@@ -592,6 +609,14 @@ struct SavedBatchDTO: Codable {
     // Legacy field for backward compatibility with old exports
     var dryWeightReadings: [DryWeightDTO]?
 
+    // HP measured container/stir bar readings
+    var hpSubstrateBeakerReading: Double?
+    var hpSubstrateStirBarReading: Double?
+    var hpSugarBeakerReading: Double?
+    var hpSugarStirBarReading: Double?
+    var hpActivationContainerReading: Double?
+    var hpActivationStirBarReading: Double?
+
     // HP cumulative readings
     var hpGelatin: Double?
     var hpGelatinWater: Double?
@@ -612,6 +637,7 @@ struct SavedBatchDTO: Codable {
     var hpSubstrateBeakerID: String?
     var hpSugarMixBeakerID: String?
     var hpActivationTrayID: String?
+    var hpTrayTransferBeakerID: String?
     var hpSubstrateStirBarID: String?
     var hpSugarMixStirBarID: String?
     var hpActivationStirBarID: String?
@@ -619,8 +645,14 @@ struct SavedBatchDTO: Codable {
     var hpSugarMixScaleID: String?
     var hpActivationScaleID: String?
 
+    // HP tray transfer beaker reading
+    var hpTrayTransferBeakerReading: Double?
+
     // HP transfer readings
     var hpSubstrateSugarTransfer: Double?
+    var hpSubstrateGelatinTransfer: Double?
+    var hpSubstrateKSorbateTransfer: Double?
+    var hpSubstrateCitricAcidTransfer: Double?
     var hpSubstrateActivationTransfer: Double?
 
     // Frozen tare weights
@@ -726,6 +758,7 @@ extension SavedBatch {
             weightTrayPlusResidue: weightTrayPlusResidue,
             extraGummyMixGrams: extraGummyMixGrams,
             hpTransferSyringeID: hpTransferSyringeID,
+            hpTransferSyringeReading: hpTransferSyringeReading,
             hpTransferScaleID: hpTransferScaleID,
             hpMoldsTrayID: hpMoldsTrayID,
             hpMoldsScaleID: hpMoldsScaleID,
@@ -769,6 +802,12 @@ extension SavedBatch {
             dehydrationContainers: dehydrationContainers.sorted { $0.label < $1.label }.map { $0.toDTO() },
             additionalMeasurements: additionalMeasurementEntries.map { $0.toDTO() },
             dryWeightReadings: nil,
+            hpSubstrateBeakerReading: hpSubstrateBeakerReading,
+            hpSubstrateStirBarReading: hpSubstrateStirBarReading,
+            hpSugarBeakerReading: hpSugarBeakerReading,
+            hpSugarStirBarReading: hpSugarStirBarReading,
+            hpActivationContainerReading: hpActivationContainerReading,
+            hpActivationStirBarReading: hpActivationStirBarReading,
             hpGelatin: hpGelatin, hpGelatinWater: hpGelatinWater,
             hpGranulated: hpGranulated, hpGlucoseSyrup: hpGlucoseSyrup, hpSugarWater: hpSugarWater,
             hpActive: hpActive, hpCitricAcid: hpCitricAcid,
@@ -778,10 +817,15 @@ extension SavedBatch {
             hpActivationTrayResidue: hpActivationTrayResidue,
             hpSubstrateBeakerID: hpSubstrateBeakerID, hpSugarMixBeakerID: hpSugarMixBeakerID,
             hpActivationTrayID: hpActivationTrayID,
+            hpTrayTransferBeakerID: hpTrayTransferBeakerID,
             hpSubstrateStirBarID: hpSubstrateStirBarID, hpSugarMixStirBarID: hpSugarMixStirBarID, hpActivationStirBarID: hpActivationStirBarID,
             hpSubstrateScaleID: hpSubstrateScaleID, hpSugarMixScaleID: hpSugarMixScaleID,
             hpActivationScaleID: hpActivationScaleID,
+            hpTrayTransferBeakerReading: hpTrayTransferBeakerReading,
             hpSubstrateSugarTransfer: hpSubstrateSugarTransfer,
+            hpSubstrateGelatinTransfer: hpSubstrateGelatinTransfer,
+            hpSubstrateKSorbateTransfer: hpSubstrateKSorbateTransfer,
+            hpSubstrateCitricAcidTransfer: hpSubstrateCitricAcidTransfer,
             hpSubstrateActivationTransfer: hpSubstrateActivationTransfer,
             frozenSubstrateBeakerTare: frozenSubstrateBeakerTare,
             frozenSugarMixBeakerTare: frozenSugarMixBeakerTare,
@@ -907,6 +951,15 @@ extension SavedBatch {
             }
         }
 
+        // HP measured container/stir bar readings
+        batch.hpSubstrateBeakerReading = dto.hpSubstrateBeakerReading
+        batch.hpSubstrateStirBarReading = dto.hpSubstrateStirBarReading
+        batch.hpSugarBeakerReading = dto.hpSugarBeakerReading
+        batch.hpSugarStirBarReading = dto.hpSugarStirBarReading
+        batch.hpActivationContainerReading = dto.hpActivationContainerReading
+        batch.hpActivationStirBarReading = dto.hpActivationStirBarReading
+        batch.hpTransferSyringeReading = dto.hpTransferSyringeReading
+
         // HP cumulative readings
         batch.hpGelatin = dto.hpGelatin
         batch.hpGelatinWater = dto.hpGelatinWater
@@ -927,6 +980,7 @@ extension SavedBatch {
         batch.hpSubstrateBeakerID = dto.hpSubstrateBeakerID
         batch.hpSugarMixBeakerID = dto.hpSugarMixBeakerID
         batch.hpActivationTrayID = dto.hpActivationTrayID
+        batch.hpTrayTransferBeakerID = dto.hpTrayTransferBeakerID
         batch.hpSubstrateStirBarID = dto.hpSubstrateStirBarID
         batch.hpSugarMixStirBarID = dto.hpSugarMixStirBarID
         batch.hpActivationStirBarID = dto.hpActivationStirBarID
@@ -934,8 +988,14 @@ extension SavedBatch {
         batch.hpSugarMixScaleID = dto.hpSugarMixScaleID
         batch.hpActivationScaleID = dto.hpActivationScaleID
 
+        // HP tray transfer beaker reading
+        batch.hpTrayTransferBeakerReading = dto.hpTrayTransferBeakerReading
+
         // HP transfer readings
         batch.hpSubstrateSugarTransfer = dto.hpSubstrateSugarTransfer
+        batch.hpSubstrateGelatinTransfer = dto.hpSubstrateGelatinTransfer
+        batch.hpSubstrateKSorbateTransfer = dto.hpSubstrateKSorbateTransfer
+        batch.hpSubstrateCitricAcidTransfer = dto.hpSubstrateCitricAcidTransfer
         batch.hpSubstrateActivationTransfer = dto.hpSubstrateActivationTransfer
 
         // Frozen tare weights & scale resolutions
@@ -1139,6 +1199,15 @@ extension BatchConfigViewModel {
         batch.lsdUgPerTab = lsdUgPerTab
         batch.lsdTransferWaterML = systemConfig.lsdTransferWaterML
 
+        // HP measured container/stir bar readings
+        batch.hpSubstrateBeakerReading = hpSubstrateBeakerReading
+        batch.hpSubstrateStirBarReading = hpSubstrateStirBarReading
+        batch.hpSugarBeakerReading = hpSugarBeakerReading
+        batch.hpSugarStirBarReading = hpSugarStirBarReading
+        batch.hpActivationContainerReading = hpActivationContainerReading
+        batch.hpActivationStirBarReading = hpActivationStirBarReading
+        batch.hpTransferSyringeReading = hpTransferSyringeReading
+
         // HP cumulative scale readings
         batch.hpGelatin = hpGelatin
         batch.hpGelatinWater = hpGelatinWater
@@ -1159,6 +1228,7 @@ extension BatchConfigViewModel {
         batch.hpSubstrateBeakerID = hpSubstrateBeakerID
         batch.hpSugarMixBeakerID = hpSugarMixBeakerID
         batch.hpActivationTrayID = hpActivationTrayID
+        batch.hpTrayTransferBeakerID = hpTrayTransferBeakerID
         batch.hpSubstrateStirBarID = hpSubstrateStirBarID
         batch.hpSugarMixStirBarID = hpSugarMixStirBarID
         batch.hpActivationStirBarID = hpActivationStirBarID
@@ -1166,8 +1236,14 @@ extension BatchConfigViewModel {
         batch.hpSugarMixScaleID = hpSugarMixScaleID
         batch.hpActivationScaleID = hpActivationScaleID
 
+        // HP tray transfer beaker reading
+        batch.hpTrayTransferBeakerReading = hpTrayTransferBeakerReading
+
         // HP transfer readings
         batch.hpSubstrateSugarTransfer = hpSubstrateSugarTransfer
+        batch.hpSubstrateGelatinTransfer = hpSubstrateGelatinTransfer
+        batch.hpSubstrateKSorbateTransfer = hpSubstrateKSorbateTransfer
+        batch.hpSubstrateCitricAcidTransfer = hpSubstrateCitricAcidTransfer
         batch.hpSubstrateActivationTransfer = hpSubstrateActivationTransfer
 
         // Frozen tare weights (beaker + stir bar, snapshot from SystemConfig at save time)

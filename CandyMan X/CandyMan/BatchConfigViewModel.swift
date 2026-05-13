@@ -23,8 +23,20 @@ import SwiftData
 /// - Corrections and additional measurements tracking
 @Observable
 final class BatchConfigViewModel {
+    init() {
+        enableMultiActive()
+    }
+
     var selectedShape: GummyShape = .newBear
-    var trayCount: Int = 1
+    var trayCount: Int = 1 {
+        didSet {
+            if trayCount >= 1 && !multiActiveEnabled {
+                enableMultiActive()
+            } else if trayCount < 1 && multiActiveEnabled {
+                disableMultiActive()
+            }
+        }
+    }
     var extraGummies: Int = 0
     var activeConcentration: Double = 10.0
     var selectedActive: Active = .lsd {
@@ -33,9 +45,9 @@ final class BatchConfigViewModel {
         }
     }
     var units: ConcentrationUnit = .ug
-    var gelatinPercentage: Double = 5.430
+    var gelatinPercentage: Double = 6.500
 
-    /// Total gummy count: full trays + extra individual gummies.
+    /// Total gummy count based on full trays.
     func totalGummies(using systemConfig: SystemConfig) -> Int {
         let spec = systemConfig.spec(for: selectedShape)
         return spec.count * trayCount + extraGummies
@@ -54,7 +66,7 @@ final class BatchConfigViewModel {
 
     // MARK: - Multi-Active
 
-    /// Whether multi-active mode is enabled. Only meaningful when trayCount > 1.
+    /// Whether multi-active mode is enabled. Active when trayCount >= 1.
     var multiActiveEnabled: Bool = false
 
     /// Per-tray configurations. Kept in sync with trayCount when multiActiveEnabled.
@@ -77,7 +89,14 @@ final class BatchConfigViewModel {
     /// Gelatin/sugar measurements remain global (shared across all trays).
     struct TrayActivationState {
         var activated: Bool = false
-        var additionalActiveWaterML: Double = 0.0
+
+        var additionalActiveWaterML: Double {
+            max(0, (hpAdditionalActivationWater ?? 0) - (hpActive ?? 0))
+        }
+
+        // HP measured container/stir bar scale readings
+        var hpActivationContainerReading: Double? = nil
+        var hpActivationStirBarReading: Double? = nil
 
         // HP activation readings
         var hpActive: Double? = nil
@@ -219,7 +238,8 @@ final class BatchConfigViewModel {
     func captureActivationToState() -> TrayActivationState {
         var state = TrayActivationState()
         state.activated = batchActivated
-        state.additionalActiveWaterML = additionalActiveWaterML
+        state.hpActivationContainerReading = hpActivationContainerReading
+        state.hpActivationStirBarReading = hpActivationStirBarReading
         state.hpActive = hpActive
         state.hpCitricAcid = hpCitricAcid
         state.hpKSorbate = hpKSorbate
@@ -243,7 +263,8 @@ final class BatchConfigViewModel {
     /// Loads a TrayActivationState into the flat activation-related properties.
     func applyActivationState(_ state: TrayActivationState) {
         batchActivated = state.activated
-        additionalActiveWaterML = state.additionalActiveWaterML
+        hpActivationContainerReading = state.hpActivationContainerReading
+        hpActivationStirBarReading = state.hpActivationStirBarReading
         hpActive = state.hpActive
         hpCitricAcid = state.hpCitricAcid
         hpKSorbate = state.hpKSorbate
@@ -285,7 +306,6 @@ final class BatchConfigViewModel {
         var units: ConcentrationUnit
         var gelatinPercentage: Double
         var lsdUgPerTab: Double
-        var additionalActiveWaterML: Double
         var overageFactor: Double
         var selectedFlavors: [FlavorSelection: Double]
         var flavorSourceTab: FlavorSourceType
@@ -306,7 +326,6 @@ final class BatchConfigViewModel {
             units: units,
             gelatinPercentage: gelatinPercentage,
             lsdUgPerTab: lsdUgPerTab,
-            additionalActiveWaterML: additionalActiveWaterML,
             overageFactor: overageFactor,
             selectedFlavors: selectedFlavors,
             flavorSourceTab: flavorSourceTab,
@@ -356,8 +375,15 @@ final class BatchConfigViewModel {
 
     /// Clears all post-calculate measurement fields back to nil/defaults.
     private func clearMeasurements() {
+        measurementsLocked      = false
         highPrecisionMode       = true
         weightBeakerEmpty       = nil
+        hpSubstrateBeakerReading = nil
+        hpSubstrateStirBarReading = nil
+        hpSugarBeakerReading    = nil
+        hpSugarStirBarReading   = nil
+        hpActivationContainerReading = nil
+        hpActivationStirBarReading = nil
         hpGelatin               = nil
         hpGelatinWater          = nil
         hpGranulated            = nil
@@ -375,14 +401,21 @@ final class BatchConfigViewModel {
         hpSubstrateBeakerID     = nil
         hpSugarMixBeakerID      = nil
         hpActivationTrayID      = nil
+        hpTrayTransferBeakerID  = nil
         hpSubstrateScaleID      = nil
         hpSugarMixScaleID       = nil
         hpActivationScaleID     = nil
+        hpTrayTransferBeakerReading = nil
         hpSubstrateSugarTransfer = nil
+        hpSubstrateGelatinTransfer = nil
+        hpSubstrateKSorbateTransfer = nil
+        hpSubstrateCitricAcidTransfer = nil
         hpSubstrateActivationTransfer = nil
         hpSubstrateStirBarID    = nil
         hpSugarMixStirBarID     = nil
+        hpActivationStirBarID   = nil
         hpTransferSyringeID     = nil
+        hpTransferSyringeReading = nil
         hpTransferScaleID       = nil
         hpMoldsTrayID           = nil
         hpMoldsScaleID          = nil
@@ -613,6 +646,14 @@ final class BatchConfigViewModel {
     var highPrecisionMode: Bool = true
     var weightBeakerEmpty: Double? = nil
 
+    // HP measured container/stir bar scale readings
+    var hpSubstrateBeakerReading: Double? = nil
+    var hpSubstrateStirBarReading: Double? = nil
+    var hpSugarBeakerReading: Double? = nil
+    var hpSugarStirBarReading: Double? = nil
+    var hpActivationContainerReading: Double? = nil
+    var hpActivationStirBarReading: Double? = nil
+
     // HP cumulative scale readings — Gelatin Mix
     // Each value is the total reading on the scale AFTER adding that ingredient.
     var hpGelatin: Double? = nil
@@ -639,6 +680,7 @@ final class BatchConfigViewModel {
     var hpSubstrateBeakerID: String? = nil
     var hpSugarMixBeakerID: String? = nil
     var hpActivationTrayID: String? = nil
+    var hpTrayTransferBeakerID: String? = nil
 
     // High-precision stir bar selections (StirBar.id or nil)
     var hpSubstrateStirBarID: String? = nil
@@ -650,12 +692,19 @@ final class BatchConfigViewModel {
     var hpSugarMixScaleID: String? = nil
     var hpActivationScaleID: String? = nil
 
+    // High-precision tray transfer beaker reading
+    var hpTrayTransferBeakerReading: Double? = nil
+
     // High-precision transfer measurements
     var hpSubstrateSugarTransfer: Double? = nil
+    var hpSubstrateGelatinTransfer: Double? = nil
+    var hpSubstrateKSorbateTransfer: Double? = nil
+    var hpSubstrateCitricAcidTransfer: Double? = nil
     var hpSubstrateActivationTransfer: Double? = nil
 
     // High-precision transfer syringe selections
     var hpTransferSyringeID: String? = nil
+    var hpTransferSyringeReading: Double? = nil
     var hpTransferScaleID: String? = nil
     var hpMoldsTrayID: String? = nil
     var hpMoldsScaleID: String? = nil
@@ -1058,7 +1107,9 @@ final class BatchConfigViewModel {
 
     // MARK: - Overage
 
-    var additionalActiveWaterML: Double = 0.0
+    var additionalActiveWaterML: Double {
+        max(0, (hpAdditionalActivationWater ?? 0) - (hpActive ?? 0))
+    }
     var overageFactor: Double = 1.03
     var overageInputAsGummies: Bool = false
 
@@ -1089,8 +1140,8 @@ final class BatchConfigViewModel {
     }
 
     var waterRatioGelatinToSugar: Double = 75.0 / 65.0
-    var terpeneVolumePPM: Double = 219.9
-    var flavorOilVolumePercent: Double = 0.481
+    var terpeneVolumePPM: Double = 650.0
+    var flavorOilVolumePercent: Double = 0.650
 
     /// Filtered view of only the oil-type selections.
     var selectedOils: [FlavorSelection] {
@@ -1172,7 +1223,7 @@ final class BatchConfigViewModel {
     /// Map of selected colors → blend percentages (0–100).
     var selectedColors: [GummyColor: Double] = [:]
     var colorsLocked: Bool = false
-    var colorVolumePercent: Double = 0.581
+    var colorVolumePercent: Double = 0.350
     var colorCompositionLocked: Bool = false
 
     func toggleColor(_ color: GummyColor) {
@@ -1263,15 +1314,20 @@ final class BatchConfigViewModel {
     }
 
     func applyTemplate(_ template: BatchTemplate) {
+        // Reset multi-active before changing flat state
+        multiActiveEnabled = false
+        trayConfigs = []
+        trayActivationStates = []
+        selectedTrayIndex = 0
+        savedSingleActiveConfig = nil
+
         selectedShape = GummyShape(rawValue: template.shape) ?? .newBear
-        trayCount = template.trayCount
         extraGummies = 0
         activeConcentration = template.activeConcentration
         selectedActive = Active(rawValue: template.activeName) ?? .lsd
         units = ConcentrationUnit(rawValue: template.activeUnit) ?? .ug
         gelatinPercentage = template.gelatinPercentage
         lsdUgPerTab = template.lsdUgPerTab
-        additionalActiveWaterML = template.additionalActiveWaterML
         overageFactor = template.overageFactor
 
         selectedFlavors = [:]
@@ -1301,6 +1357,9 @@ final class BatchConfigViewModel {
         colorVolumePercent = template.colorVolumePercent
         colorCompositionLocked = template.colorCompositionLocked
 
+        // Set trayCount last so didSet auto-enables multi-active with full flat state
+        trayCount = template.trayCount
+
         activeTemplateID = template.persistentModelID
         activeTemplateName = template.name
         templateSnapshot = captureSnapshot()
@@ -1314,6 +1373,13 @@ final class BatchConfigViewModel {
         activeTemplateName      = ""
         templateSnapshot        = nil
 
+        // Multi-Active (reset before trayCount to avoid didSet side-effects)
+        multiActiveEnabled      = false
+        trayConfigs             = []
+        trayActivationStates    = []
+        selectedTrayIndex       = 0
+        savedSingleActiveConfig = nil
+
         // Recipe inputs
         selectedShape           = .newBear
         trayCount               = 1
@@ -1321,9 +1387,8 @@ final class BatchConfigViewModel {
         activeConcentration     = 10.0
         selectedActive          = .lsd
         units                   = .ug
-        gelatinPercentage       = 5.430
+        gelatinPercentage       = 6.500
         lsdUgPerTab             = systemConfig?.defaultLsdUgPerTab ?? 117.0
-        additionalActiveWaterML = 0.0
         overageFactor           = 1.03
 
         // Flavors
@@ -1333,20 +1398,13 @@ final class BatchConfigViewModel {
         flavorSourceTab         = .terpenes
         flavorCompositionLocked = false
         waterRatioGelatinToSugar = 75.0 / 65.0
-        terpeneVolumePPM        = 219.9
-        flavorOilVolumePercent  = 0.481
+        terpeneVolumePPM        = 650.0
+        flavorOilVolumePercent  = 0.650
 
         // Colors
         selectedColors          = [:]
         colorsLocked            = false
-        colorVolumePercent      = 0.581
+        colorVolumePercent      = 0.350
         colorCompositionLocked  = false
-
-        // Multi-Active
-        multiActiveEnabled      = false
-        trayConfigs             = []
-        trayActivationStates    = []
-        selectedTrayIndex       = 0
-        savedSingleActiveConfig = nil
     }
 }

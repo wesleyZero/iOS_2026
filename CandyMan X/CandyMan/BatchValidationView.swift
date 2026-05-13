@@ -32,13 +32,12 @@ struct BatchValidationView: View {
 
         let finalMixMass      = activeTotalMass  + gelatinTotalMass  + sugarTotalMass
         let finalMixVol       = activeTotalVol   + gelatinTotalVol   + sugarTotalVol
-        let finalOverageMass  = finalMixMass * viewModel.overageFactor
-        let finalOverageVol   = finalMixVol  * viewModel.overageFactor
 
-        let targetVol           = spec.volumeML * Double(spec.count) * Double(viewModel.trayCount)
-        let finalMixVolNoOverage = finalMixVol / viewModel.overageFactor
-        let quantifiedError     = finalMixVolNoOverage - targetVol
-        let relativeError       = (targetVol > 0) ? (quantifiedError / targetVol) * 100.0 : 0.0
+        let overageFactor        = viewModel.overageFactor
+        let targetVol            = result.vBase
+        let finalMixVolNoOverage = overageFactor > 0 ? finalMixVol / overageFactor : finalMixVol
+        let quantifiedError      = finalMixVolNoOverage - targetVol
+        let relativeError        = (targetVol > 0) ? (quantifiedError / targetVol) * 100.0 : 0.0
 
         VStack(spacing: 0) {
             Button {
@@ -80,7 +79,7 @@ struct BatchValidationView: View {
 
             // MARK: Active Mix Components
             subsectionHeader("Active Mix Components")
-            componentRows(result.activationMix.components)
+            activationComponentRows(result.activationMix.components)
             totalRow(mass: activeTotalMass, volume: activeTotalVol)
 
             // MARK: Gelatin Mix Components
@@ -95,14 +94,30 @@ struct BatchValidationView: View {
 
             ThemedDivider(indent: 20).padding(.vertical, 8)
 
-            // MARK: Mixtures
-            subsectionHeader("Mixtures")
+            // MARK: Input Mixtures
+            subsectionHeader("Input Mixtures")
             compRow("Active Mix",  mass: activeTotalMass,  volume: activeTotalVol)
             compRow("Gelatin Mix", mass: gelatinTotalMass, volume: gelatinTotalVol)
             compRow("Sugar Mix",   mass: sugarTotalMass,   volume: sugarTotalVol)
-            totalRow(label: "Final Mix", mass: finalMixMass, volume: finalMixVol, volColor: systemConfig.designSecondaryAccent)
 
-            let overagePct = (viewModel.overageFactor - 1.0) * 100.0
+            ThemedDivider(indent: 20).padding(.vertical, 8)
+
+            // MARK: Final Mixture
+            subsectionHeader("Final Mixture")
+            compRow("Final Mix (+\(String(format: "%.1f", (overageFactor - 1) * 100))%)", mass: finalMixMass, volume: finalMixVol)
+            totalRow(label: "Final Mix (without overage)", mass: finalMixMass / overageFactor, volume: finalMixVolNoOverage, volColor: systemConfig.designSecondaryAccent)
+
+            ThemedDivider(indent: 20).padding(.vertical, 8)
+
+            // MARK: Error
+            errorRow("Quantified Error",
+                     value: String(format: "%+.3f mL", quantifiedError),
+                     highlight: abs(quantifiedError))
+            errorRow("Relative Error",
+                     value: String(format: "%+.3f%%", relativeError),
+                     highlight: abs(relativeError))
+
+            let overagePct = (overageFactor - 1.0) * 100.0
             finePrintNote(overagePct: overagePct, targetVol: targetVol)
 
             Spacer().frame(height: 12)
@@ -132,6 +147,36 @@ struct BatchValidationView: View {
                     .cmValueSlot()
             }
             .cmDataRowPadding()
+        }
+    }
+
+    @ViewBuilder
+    private func activationComponentRows(_ components: [BatchComponent]) -> some View {
+        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+        ForEach(orderedCategories, id: \.rawValue) { category in
+            let items = components.filter { $0.activationCategory == category }
+            if !items.isEmpty {
+                if category != .preservative {
+                    HStack {
+                        Text(category.rawValue)
+                            .cmSubsectionTitle().fontWeight(.bold)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 2)
+                }
+                ForEach(items) { c in
+                    HStack(spacing: 6) {
+                        Text(c.label)
+                            .cmRowLabel()
+                        Spacer()
+                        Text(String(format: "%.3f", c.massGrams))
+                            .cmValueSlot()
+                        Text(String(format: "%.3f", c.volumeML))
+                            .cmValueSlot()
+                    }
+                    .cmDataRowPadding()
+                }
+            }
         }
     }
 
@@ -291,7 +336,7 @@ struct RelativeFractionsView: View {
 
             // MARK: Active Mix Components
             fracSubheader("Active Mix Components")
-            fracComponentRows(result.activationMix.components, totalMass: finalMixMass, totalVol: finalMixVol)
+            fracActivationComponentRows(result.activationMix.components, totalMass: finalMixMass, totalVol: finalMixVol)
             fracTotalRow(mass: activeTotalMass, volume: activeTotalVol, totalMass: finalMixMass, totalVol: finalMixVol)
 
             // MARK: Gelatin Mix Components
@@ -360,6 +405,36 @@ struct RelativeFractionsView: View {
                     .cmValueSlot()
             }
             .cmDataRowPadding()
+        }
+    }
+
+    @ViewBuilder
+    private func fracActivationComponentRows(_ components: [BatchComponent], totalMass: Double, totalVol: Double) -> some View {
+        let orderedCategories: [ActivationCategory] = [.preservative, .color, .flavorOil, .terpene]
+        ForEach(orderedCategories, id: \.rawValue) { category in
+            let items = components.filter { $0.activationCategory == category }
+            if !items.isEmpty {
+                if category != .preservative {
+                    HStack {
+                        Text(category.rawValue)
+                            .cmSubsectionTitle().fontWeight(.bold)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 20).padding(.top, 8).padding(.bottom, 2)
+                }
+                ForEach(items) { c in
+                    HStack(spacing: 6) {
+                        Text(c.label)
+                            .cmRowLabel()
+                        Spacer()
+                        Text(String(format: "%.3f", pct(c.massGrams, of: totalMass)))
+                            .cmValueSlot()
+                        Text(String(format: "%.3f", pct(c.volumeML, of: totalVol)))
+                            .cmValueSlot()
+                    }
+                    .cmDataRowPadding()
+                }
+            }
         }
     }
 

@@ -19,7 +19,7 @@ struct ExperimentalData2View: View {
     @State private var isExpanded = false
 
     // Column widths
-    private let colWidth: CGFloat = 58
+    private let colWidth: CGFloat = 52
 
     // MARK: - Theoretical (from BatchCalculator)
 
@@ -27,31 +27,51 @@ struct ExperimentalData2View: View {
         BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
     }
 
+    private var multiResult: MultiActiveBatchResult? {
+        guard viewModel.multiActiveEnabled else { return nil }
+        return BatchCalculator.calculateMultiActive(viewModel: viewModel, systemConfig: systemConfig)
+    }
+
+    private var perTrayResult: MultiActiveBatchResult.PerTrayResult? {
+        guard let multi = multiResult else { return nil }
+        let idx = min(viewModel.selectedTrayIndex, multi.perTrayResults.count - 1)
+        guard idx >= 0 else { return nil }
+        return multi.perTrayResults[idx]
+    }
+
     private var sugarOverage: Double {
         1.0 + systemConfig.sugarMixtureOveragePercent / 100.0
     }
+    private var gelatinOverage: Double {
+        1.0 + systemConfig.gelatinMixtureOveragePercent / 100.0
+    }
 
-    // Gelatin Mix theoretical sub-components
-    private var theoGelatinMass: Double { result.gelatinMix.components[0].massGrams }
-    private var theoGelatinWaterMass: Double { result.gelatinMix.components[1].massGrams }
-    private var theoGelatinMixTotal: Double { result.gelatinMix.totalMassGrams }
+    // Bulk mix groups — use multi-active combined mixes when enabled
+    private var bulkGelatinMix: MixGroup { multiResult?.combinedGelatinMix ?? result.gelatinMix }
+    private var bulkSugarMix: MixGroup { multiResult?.combinedSugarMix ?? result.sugarMix }
+
+    // Gelatin Mix theoretical sub-components (with overage applied — matches preparation target)
+    private var theoGelatinMass: Double { bulkGelatinMix.components[0].massGrams * gelatinOverage }
+    private var theoGelatinWaterMass: Double { bulkGelatinMix.components[1].massGrams * gelatinOverage }
+    private var theoGelatinMixTotal: Double { bulkGelatinMix.totalMassGrams * gelatinOverage }
 
     // Sugar Mix theoretical sub-components (with overage applied)
     // Components order: [0] Glucose Syrup, [1] Granulated Sugar, [2] Water
-    private var theoGlucoseSyrupMass: Double { result.sugarMix.components[0].massGrams * sugarOverage }
-    private var theoGranulatedMass: Double { result.sugarMix.components[1].massGrams * sugarOverage }
-    private var theoSugarWaterMass: Double { result.sugarMix.components[2].massGrams * sugarOverage }
-    private var theoSugarMixTotal: Double { result.sugarMix.totalMassGrams * sugarOverage }
+    private var theoGlucoseSyrupMass: Double { bulkSugarMix.components[0].massGrams * sugarOverage }
+    private var theoGranulatedMass: Double { bulkSugarMix.components[1].massGrams * sugarOverage }
+    private var theoSugarWaterMass: Double { bulkSugarMix.components[2].massGrams * sugarOverage }
+    private var theoSugarMixTotal: Double { bulkSugarMix.totalMassGrams * sugarOverage }
 
     // Activation Mix theoretical sub-components (found by label)
-    private var theoCitricAcidMass: Double {
+    // Substance masses from BatchCalculator (pure ingredient, no solution water)
+    private var theoCitricAcidSubstanceMass: Double {
         result.activationMix.components.first { $0.label == "Citric Acid" }?.massGrams ?? 0
     }
-    private var theoActivationWaterMass: Double {
-        result.activationMix.components.first { $0.label == "Activation Water" }?.massGrams ?? 0
-    }
-    private var theoKSorbateMass: Double {
+    private var theoKSorbateSubstanceMass: Double {
         result.activationMix.components.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
+    }
+    private var theoActivationWaterMass: Double {
+        result.activationMix.components.filter { $0.label == "Additional Water" || $0.label == "LSD Transfer Water" }.reduce(0.0) { $0 + $1.massGrams }
     }
     private var theoFlavorOilsMass: Double {
         result.activationMix.components.filter { $0.activationCategory == .flavorOil }.reduce(0.0) { $0 + $1.massGrams }
@@ -62,7 +82,10 @@ struct ExperimentalData2View: View {
     private var theoTerpsMass: Double {
         result.activationMix.components.filter { $0.activationCategory == .terpene }.reduce(0.0) { $0 + $1.massGrams }
     }
-    private var theoActivationMixTotal: Double { result.activationMix.totalMassGrams }
+    // Activation mix total excludes preservatives (added during transfer, not in activation tray)
+    private var theoActivationMixTotal: Double {
+        result.activationMix.totalMassGrams - theoCitricAcidSubstanceMass - theoKSorbateSubstanceMass
+    }
 
     // Mixture Densities — theoretical (mass / volume from BatchCalculator)
     private var theoGelatinMixDensity: Double {
@@ -116,20 +139,21 @@ struct ExperimentalData2View: View {
         return reading - tare
     }
 
+    private var lossValues: [Double?] {
+        [calcHPBeakerResidue, calcActivationTrayResidue, calcSyringeResidue,
+         calcTrayResidue, viewModel.extraGummyMixGrams]
+    }
+
     /// Sum of all measured losses (beaker residue + activation tray residue +
     /// syringe residue + tray residue + extra gummy mix).
     private var totalLossMass: Double? {
-        let beaker    = calcHPBeakerResidue
-        let actTray   = calcActivationTrayResidue
-        let syringe   = calcSyringeResidue
-        let tray      = calcTrayResidue
-        let extra     = viewModel.extraGummyMixGrams
-
-        let values = [beaker, actTray, syringe, tray, extra]
-        let available = values.compactMap { $0 }
+        let available = lossValues.compactMap { $0 }
         guard !available.isEmpty else { return nil }
         return available.reduce(0, +)
     }
+
+    private var lossesRecordedCount: Int { lossValues.compactMap { $0 }.count }
+    private var lossesTotalCount: Int { lossValues.count }
 
     /// Syringe residue = syringe residue reading − syringe tare (transfer syringe).
     private var calcSyringeResidue: Double? {
@@ -177,10 +201,10 @@ struct ExperimentalData2View: View {
         return result.totalMassGrams / gummies
     }
 
-    /// Theoretical volume per gummy = theoGummyMass / estimated final mix density from settings.
+    /// Theoretical volume per gummy = theoGummyMass / dynamically computed final mix density.
     private var theoGummyVolume: Double {
-        guard systemConfig.estimatedFinalMixDensity > 0 else { return 0 }
-        return theoGummyMass / systemConfig.estimatedFinalMixDensity
+        guard theoFinalMixDensity > 0 else { return 0 }
+        return theoGummyMass / theoFinalMixDensity
     }
 
     /// Theoretical active concentration per gummy = user-configured dose.
@@ -190,18 +214,10 @@ struct ExperimentalData2View: View {
 
     // MARK: - Gummy Properties (Experimental)
 
-    /// Syringe tare from SystemConfig for the selected (or default) transfer syringe.
-    private var hpSyringeTare: Double {
-        let syringeID = viewModel.hpTransferSyringeID ?? systemConfig.syringes.first?.id
-        return syringeID.map { systemConfig.syringeTare(for: $0) } ?? 0
-    }
-
-    /// HP density of gummy mixture = (syringe+mix − syringe tare) / volume drawn into syringe.
+    /// HP density of gummy mixture — uses the same measured syringe tare as calcDensityFinalMix
+    /// to keep the density shown in Mixture Densities consistent with the one used for per-gummy volume.
     private var hpDensityGummyMix: Double? {
-        guard let syringeWithMix = viewModel.weightSyringeWithMix,
-              let vol = viewModel.volumeSyringeGummyMix,
-              vol > 0 else { return nil }
-        return (syringeWithMix - hpSyringeTare) / vol
+        viewModel.calcDensityFinalMix(systemConfig: systemConfig)
     }
 
     /// Net gummy mix transferred to trays = syringe+mix − syringe(residue).
@@ -232,43 +248,50 @@ struct ExperimentalData2View: View {
         avgGummyDoseAfterLoss
     }
 
+    // Total theoretical batch mass including solution water from preservatives.
+    // Gelatin overage is NOT included — overage is prepared extra, not part of the final gummy.
+    private var theoTotalWithSolutions: Double {
+        result.totalMassGrams
+            + theoCitricAcidSubstanceMass * systemConfig.citricAcidSolutionRatio
+            + theoKSorbateSubstanceMass * systemConfig.kSorbateSolutionRatio
+    }
+
     // MARK: - Preservative Mass Fractions
 
-    /// Theoretical citric acid mass fraction (%) = citric acid mass / total batch mass × 100.
+    /// Theoretical citric acid mass fraction (%) = pure substance mass / total batch mass × 100.
     private var theoCitricAcidFraction: Double {
-        let total = result.totalMassGrams
-        guard total > 0 else { return 0 }
-        return (theoCitricAcidMass / total) * 100.0
+        guard theoTotalWithSolutions > 0 else { return 0 }
+        return (theoCitricAcidSubstanceMass / theoTotalWithSolutions) * 100.0
     }
 
-    /// Experimental citric acid mass fraction (%) = measured citric acid / gummy mixture mass × 100.
+    /// Experimental citric acid mass fraction (%) = transfer solution / (1 + ratio) / gummy mixture mass × 100.
     private var expCitricAcidFraction: Double? {
-        guard let citric = expCitricAcidMass,
+        guard let citric = expTransferCitricAcidMass,
               let mixMass = hpGummyMixtureMass,
               mixMass > 0 else { return nil }
-        return (citric / mixMass) * 100.0
+        let substanceMass = citric / (1.0 + systemConfig.citricAcidSolutionRatio)
+        return (substanceMass / mixMass) * 100.0
     }
 
-    /// Theoretical potassium sorbate mass fraction (%) = K sorbate mass / total batch mass × 100.
+    /// Theoretical potassium sorbate mass fraction (%) = pure substance mass / total batch mass × 100.
     private var theoKSorbateFraction: Double {
-        let total = result.totalMassGrams
-        guard total > 0 else { return 0 }
-        return (theoKSorbateMass / total) * 100.0
+        guard theoTotalWithSolutions > 0 else { return 0 }
+        return (theoKSorbateSubstanceMass / theoTotalWithSolutions) * 100.0
     }
 
-    /// Experimental potassium sorbate mass fraction (%) = measured K sorbate / gummy mixture mass × 100.
+    /// Experimental potassium sorbate mass fraction (%) = transfer solution / (1 + ratio) / gummy mixture mass × 100.
     private var expKSorbateFraction: Double? {
-        guard let ksorbate = expKSorbateMass,
+        guard let ksorbate = expTransferKSorbateMass,
               let mixMass = hpGummyMixtureMass,
               mixMass > 0 else { return nil }
-        return (ksorbate / mixMass) * 100.0
+        let substanceMass = ksorbate / (1.0 + systemConfig.kSorbateSolutionRatio)
+        return (substanceMass / mixMass) * 100.0
     }
 
-    /// Theoretical gelatin mass fraction (%) = gelatin mass / total batch mass × 100.
+    /// Theoretical gelatin mass fraction (%) = gelatin substance mass (no overage) / total batch mass × 100.
     private var theoGelatinFraction: Double {
-        let total = result.totalMassGrams
-        guard total > 0 else { return 0 }
-        return (theoGelatinMass / total) * 100.0
+        guard theoTotalWithSolutions > 0 else { return 0 }
+        return (result.gelatinMix.components[0].massGrams / theoTotalWithSolutions) * 100.0
     }
 
     /// Experimental gelatin mass fraction (%) = measured gelatin / gummy mixture mass × 100.
@@ -308,37 +331,99 @@ struct ExperimentalData2View: View {
         return g + gl + w
     }
 
-    // Activation
+    // Activation (order matches tray measurements: Active → Activation Water → Flavor Oils → Terps → Color)
     private var expActiveMass: Double? {
         viewModel.hpIndividualActive(systemConfig: systemConfig)
     }
-    private var expCitricAcidMass: Double? {
-        viewModel.hpIndividualCitricAcid
-    }
-    private var expKSorbateMass: Double? {
-        viewModel.hpIndividualKSorbate
-    }
     private var expActivationWaterMass: Double? {
-        viewModel.hpIndividualActivationWater
-    }
-    private var expAdditionalActivationWaterMass: Double? {
-        viewModel.hpIndividualAdditionalActivationWater
+        guard let water = viewModel.hpAdditionalActivationWater, let active = viewModel.hpActive else { return nil }
+        return water - active
     }
     private var expFlavorOilsMass: Double? {
-        viewModel.hpIndividualFlavorOils
-    }
-    private var expColorMass: Double? {
-        viewModel.hpIndividualColor
+        guard let oils = viewModel.hpFlavorOils, let water = viewModel.hpAdditionalActivationWater else { return nil }
+        return oils - water
     }
     private var expTerpsMass: Double? {
-        viewModel.hpIndividualTerps
+        guard let terps = viewModel.hpTerps, let oils = viewModel.hpFlavorOils else { return nil }
+        return terps - oils
+    }
+    private var expColorMass: Double? {
+        guard let color = viewModel.hpColor, let terps = viewModel.hpTerps else { return nil }
+        return color - terps
     }
     private var expActivationMixTotal: Double? {
-        guard let a = expActiveMass, let c = expCitricAcidMass,
-              let k = expKSorbateMass, let w = expActivationWaterMass,
-              let aw = expAdditionalActivationWaterMass,
-              let fo = expFlavorOilsMass, let co = expColorMass, let t = expTerpsMass else { return nil }
-        return a + c + k + w + aw + fo + co + t
+        let values = [expActiveMass, expActivationWaterMass,
+                      expFlavorOilsMass, expTerpsMass, expColorMass]
+        let available = values.compactMap { $0 }
+        guard !available.isEmpty else { return nil }
+        return available.reduce(0, +)
+    }
+
+
+    // MARK: - Tray Transfer Comparisons
+
+    private var trayActivationMix: MixGroup { perTrayResult?.activationMix ?? result.activationMix }
+    private var traySugarMix: MixGroup { perTrayResult?.sugarMix ?? result.sugarMix }
+    private var trayGelatinMix: MixGroup { perTrayResult?.gelatinMix ?? result.gelatinMix }
+
+    // Beaker tare (theoretical from system settings, experimental from measured reading)
+    private var trayTransferBeakerID: String? {
+        viewModel.hpTrayTransferBeakerID ?? viewModel.hpSubstrateBeakerID
+    }
+    private var theoTransferBeakerTare: Double {
+        guard let id = trayTransferBeakerID else { return 0 }
+        return systemConfig.containerTare(for: id)
+    }
+    private var expTransferBeakerMass: Double? {
+        viewModel.hpTrayTransferBeakerReading
+    }
+
+    // Theoretical transfer masses (per-tray, no overage — overage stays as beaker residue)
+    private var theoTransferSugarMass: Double { traySugarMix.totalMassGrams }
+    private var theoTransferGelatinMass: Double { trayGelatinMix.totalMassGrams }
+    private var theoTransferKSorbateSolutionMass: Double {
+        let substance = trayActivationMix.components.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
+        return substance * (1.0 + systemConfig.kSorbateSolutionRatio)
+    }
+    private var theoTransferCitricAcidSolutionMass: Double {
+        let substance = trayActivationMix.components.first { $0.label == "Citric Acid" }?.massGrams ?? 0
+        return substance * (1.0 + systemConfig.citricAcidSolutionRatio)
+    }
+    private var theoTransferActivationMass: Double {
+        let citric = trayActivationMix.components.first { $0.label == "Citric Acid" }?.massGrams ?? 0
+        let ksorbate = trayActivationMix.components.first { $0.label == "Potassium Sorbate" }?.massGrams ?? 0
+        return trayActivationMix.totalMassGrams - citric - ksorbate
+    }
+
+    // Experimental transfer masses — each is the difference between consecutive cumulative readings
+    private var expTransferSugarMass: Double? {
+        guard let sugar = viewModel.hpSubstrateSugarTransfer,
+              let prev = viewModel.hpTrayTransferBeakerReading ?? viewModel.hpGelatin else { return nil }
+        return sugar - prev
+    }
+    private var expTransferGelatinMass: Double? {
+        guard let gelatin = viewModel.hpSubstrateGelatinTransfer,
+              let prev = viewModel.hpSubstrateSugarTransfer else { return nil }
+        return gelatin - prev
+    }
+    private var expTransferKSorbateMass: Double? {
+        guard let ksorbate = viewModel.hpSubstrateKSorbateTransfer else { return nil }
+        if let prev = viewModel.hpSubstrateGelatinTransfer { return ksorbate - prev }
+        if let prev = viewModel.hpSubstrateSugarTransfer { return ksorbate - prev }
+        return nil
+    }
+    private var expTransferCitricAcidMass: Double? {
+        guard let citric = viewModel.hpSubstrateCitricAcidTransfer,
+              let prev = viewModel.hpSubstrateKSorbateTransfer else { return nil }
+        return citric - prev
+    }
+    private var expTransferActivationMass: Double? {
+        guard let activation = viewModel.hpSubstrateActivationTransfer else { return nil }
+        if let prev = viewModel.hpSubstrateCitricAcidTransfer { return activation - prev }
+        if let prev = viewModel.hpSubstrateKSorbateTransfer { return activation - prev }
+        if let prev = viewModel.hpSubstrateGelatinTransfer { return activation - prev }
+        if let prev = viewModel.hpSubstrateSugarTransfer { return activation - prev }
+        return nil
     }
 
     // MARK: - Body
@@ -375,7 +460,7 @@ struct ExperimentalData2View: View {
                 ThemedDivider()
 
                 // MARK: Gelatin Mixture
-                comparisonSubheader("Gelatin Mixture")
+                comparisonSubheader("Bulk Gelatin Mixture")
                 comparisonRow("Water",
                               theoretical: theoGelatinWaterMass,
                               experimental: expGelatinWaterMass)
@@ -389,10 +474,17 @@ struct ExperimentalData2View: View {
                               bold: true)
                     .background(CMTheme.totalRowBG)
 
+                if systemConfig.gelatinMixtureOveragePercent > 0 {
+                    Text(String(format: "Gelatin theoretical values include %.0f%% overage.", systemConfig.gelatinMixtureOveragePercent))
+                        .cmMono10()
+                        .foregroundStyle(CMTheme.textTertiary)
+                        .padding(.horizontal, 20).padding(.top, 4)
+                }
+
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
                 // MARK: Sugar Mixture
-                comparisonSubheader("Sugar Mixture")
+                comparisonSubheader("Bulk Sugar Mixture")
                 comparisonRow("Water",
                               theoretical: theoSugarWaterMass,
                               experimental: expSugarWaterMass)
@@ -420,36 +512,50 @@ struct ExperimentalData2View: View {
 
                 // MARK: Activation Mixture
                 comparisonSubheader("Activation Mixture")
-                comparisonRow("Active",
+                comparisonRow(viewModel.selectedActive == .lsd ? "LSD Tabs in Water" : "Active",
                               theoretical: 0,
                               experimental: expActiveMass)
-                comparisonRow("Citric Acid",
-                              theoretical: theoCitricAcidMass,
-                              experimental: expCitricAcidMass)
-                comparisonRow("Potassium Sorbate",
-                              theoretical: theoKSorbateMass,
-                              experimental: expKSorbateMass)
-                comparisonRow("(Base) Activation Water",
+                comparisonRow(viewModel.selectedActive == .lsd ? "LSD 1:1 Solution" : "Activation Water",
                               theoretical: theoActivationWaterMass,
                               experimental: expActivationWaterMass)
-                comparisonRow("Additional Activation Water",
-                              theoretical: 0,
-                              experimental: expAdditionalActivationWaterMass)
                 comparisonRow("Flavor Oils",
                               theoretical: theoFlavorOilsMass,
                               experimental: expFlavorOilsMass)
-                comparisonRow("Color",
-                              theoretical: theoColorMass,
-                              experimental: expColorMass)
                 comparisonRow("Terps",
                               theoretical: theoTerpsMass,
                               experimental: expTerpsMass)
+                comparisonRow("Color",
+                              theoretical: theoColorMass,
+                              experimental: expColorMass)
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 comparisonRow("Activation Mix Total",
                               theoretical: theoActivationMixTotal,
                               experimental: expActivationMixTotal,
                               bold: true)
                     .background(CMTheme.totalRowBG)
+
+                ThemedDivider(indent: 20).padding(.vertical, 8)
+
+                // MARK: Tray Transfers
+                comparisonSubheader("Tray Transfers")
+                comparisonRow("Beaker",
+                              theoretical: theoTransferBeakerTare,
+                              experimental: expTransferBeakerMass)
+                comparisonRow("+ Sugar Mixture",
+                              theoretical: theoTransferSugarMass,
+                              experimental: expTransferSugarMass)
+                comparisonRow("+ Gelatin Mix",
+                              theoretical: theoTransferGelatinMass,
+                              experimental: expTransferGelatinMass)
+                comparisonRow(String(format: "+ KSorbate 1:%.0f", systemConfig.kSorbateSolutionRatio),
+                              theoretical: theoTransferKSorbateSolutionMass,
+                              experimental: expTransferKSorbateMass)
+                comparisonRow(String(format: "+ Citric Acid 1:%.0f", systemConfig.citricAcidSolutionRatio),
+                              theoretical: theoTransferCitricAcidSolutionMass,
+                              experimental: expTransferCitricAcidMass)
+                comparisonRow("+ Activation Mixture",
+                              theoretical: theoTransferActivationMass,
+                              experimental: expTransferActivationMass)
 
                 ThemedDivider(indent: 20).padding(.vertical, 8)
 
@@ -489,6 +595,9 @@ struct ExperimentalData2View: View {
                 ThemedDivider(indent: 20).padding(.vertical, 4)
                 lossRow("Total Losses",
                         value: totalLossMass,
+                        subtitle: lossesRecordedCount > 0 && lossesRecordedCount < lossesTotalCount
+                            ? "\(lossesRecordedCount) of \(lossesTotalCount) sources recorded"
+                            : nil,
                         bold: true)
                     .background(CMTheme.totalRowBG)
 
@@ -554,7 +663,7 @@ struct ExperimentalData2View: View {
     }
 
     private var hasAnyData: Bool {
-        expGelatinMass != nil || expGranulatedMass != nil || expCitricAcidMass != nil
+        expGelatinMass != nil || expGranulatedMass != nil || expActiveMass != nil
         || viewModel.calcGelatinMixDensity != nil || viewModel.calcSugarMixDensity != nil
         || viewModel.calcActiveMixDensity != nil || viewModel.calcDensityFinalMix(systemConfig: systemConfig) != nil
     }
@@ -564,6 +673,7 @@ struct ExperimentalData2View: View {
     private func comparisonSubheader(_ title: String) -> some View {
         HStack {
             Text(title).cmSubsectionTitle()
+                .lineLimit(1).minimumScaleFactor(0.8)
             Spacer()
             Text("theo (g)")
                 .cmFinePrint()
@@ -588,7 +698,7 @@ struct ExperimentalData2View: View {
         bold: Bool = false
     ) -> some View {
         let delta: Double? = experimental.map { $0 - theoretical }
-        let pctError: Double? = delta.map { theoretical > 0 ? ($0 / theoretical) * 100.0 : 0.0 }
+        let pctError: Double? = (theoretical > 0) ? delta.map { ($0 / theoretical) * 100.0 } : nil
 
         return HStack(spacing: 4) {
             Text(label)
@@ -659,15 +769,19 @@ struct ExperimentalData2View: View {
     private func densitySubheader(_ title: String) -> some View {
         HStack {
             Text(title).cmSubsectionTitle()
+                .lineLimit(1).minimumScaleFactor(0.8)
             Spacer()
             Text("theo (g/mL)")
                 .cmFinePrint()
+                .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(width: colWidth + 6, alignment: .trailing)
             Text("exp (g/mL)")
                 .cmFinePrint()
+                .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(width: colWidth + 6, alignment: .trailing)
             Text("Δ (g/mL)")
                 .cmFinePrint()
+                .lineLimit(1).minimumScaleFactor(0.8)
                 .frame(width: colWidth + 6, alignment: .trailing)
             Text("Δ (%)")
                 .cmFinePrint()
@@ -743,6 +857,7 @@ struct ExperimentalData2View: View {
     private func lossesSubheader(_ title: String) -> some View {
         HStack {
             Text(title).cmSubsectionTitle()
+                .lineLimit(1).minimumScaleFactor(0.8)
             Spacer()
             Text("exp (g)")
                 .cmFinePrint()
@@ -792,6 +907,7 @@ struct ExperimentalData2View: View {
     private func activeLostSubheader(_ title: String) -> some View {
         HStack {
             Text(title).cmSubsectionTitle()
+                .lineLimit(1).minimumScaleFactor(0.8)
             Spacer()
         }
         .padding(.horizontal, 16).padding(.top, 10).padding(.bottom, 4)
@@ -802,6 +918,7 @@ struct ExperimentalData2View: View {
     private func gummySubheader(_ title: String) -> some View {
         HStack {
             Text(title).cmSubsectionTitle()
+                .lineLimit(1).minimumScaleFactor(0.8)
             Spacer()
             Text("theo")
                 .cmFinePrint()

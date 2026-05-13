@@ -133,6 +133,7 @@ final class SystemConfig {
     var oldBear  = MoldSpec(.oldBear,  24, 3.600)
     var newBear  = MoldSpec(.newBear,  35, 4.300)
     var mushroom = MoldSpec(.mushroom, 15, 4.200)
+    var cylinder = MoldSpec(.cylinder, 55, 3.500)
 
     static let defaultMoldSpecs: [GummyShape: MoldSpec] = [
         .circle:   MoldSpec(.circle,   35, 5.750),
@@ -142,6 +143,7 @@ final class SystemConfig {
         .oldBear:  MoldSpec(.oldBear,  24, 3.600),
         .newBear:  MoldSpec(.newBear,  35, 4.300),
         .mushroom: MoldSpec(.mushroom, 15, 4.200),
+        .cylinder: MoldSpec(.cylinder, 55, 3.500),
     ]
 
     func moldVolumeIsDefault(for shape: GummyShape) -> Bool {
@@ -227,6 +229,11 @@ final class SystemConfig {
     var citricAcidPercent: Double = 0.786
     var additivesInputAsMassPercent: Bool = false
 
+    // MARK: Preservative Solution Ratios (1 part substance : X parts water by mass)
+
+    var citricAcidSolutionRatio: Double = 1.0
+    var kSorbateSolutionRatio: Double = 1.0
+
     // MARK: Mix Ratios
 
     /// Water : gelatin mass ratio for bloom hydration.
@@ -236,7 +243,8 @@ final class SystemConfig {
 
     // MARK: Overage (display-only; does NOT enter the batch calculator)
 
-    var sugarMixtureOveragePercent: Double = 5.0
+    var sugarMixtureOveragePercent: Double = 15.0
+    var gelatinMixtureOveragePercent: Double = 15.0
 
     // MARK: LSD-Specific
 
@@ -1629,7 +1637,29 @@ final class SystemConfig {
 
     // MARK: - Developer Mode
 
+    enum DevModeDataset: String, CaseIterable, Identifiable {
+        case tropicalPunch = "Tropical Punch"
+        case mixedBerryMollyStars = "Mixed Berry Molly Stars"
+
+        var id: String { rawValue }
+
+        var batchID: String {
+            switch self {
+            case .tropicalPunch: return "BA"
+            case .mixedBerryMollyStars: return "BB"
+            }
+        }
+
+        var subtitle: String {
+            switch self {
+            case .tropicalPunch: return "1 tray New Bear, LSD 10 µg"
+            case .mixedBerryMollyStars: return "1 tray Star, MDMA 10 mg"
+            }
+        }
+    }
+
     var developerMode: Bool = false
+    var selectedDevModeDataset: DevModeDataset = .mixedBerryMollyStars
     var expandDetailSectionsByDefault: Bool = false
     var syntheticDataSet1Enabled: Bool = false
     var syntheticDataSet2Enabled: Bool = false
@@ -1647,7 +1677,6 @@ final class SystemConfig {
         viewModel.units = .ug
         viewModel.activeConcentration = 10.0
         viewModel.lsdUgPerTab = 117.0
-        viewModel.additionalActiveWaterML = 1.0
 
         // Gelatin
         viewModel.gelatinPercentage = 5.430
@@ -1673,7 +1702,7 @@ final class SystemConfig {
         viewModel.selectedColors[.coral] = 10.0
         viewModel.selectedColors[.red] = 30.0
         viewModel.selectedColors[.yellow] = 60.0
-        viewModel.colorVolumePercent = 0.581
+        viewModel.colorVolumePercent = 0.350
 
         // Lock all selections
         viewModel.oilsLocked = true
@@ -1685,6 +1714,27 @@ final class SystemConfig {
         // Auto-calculate the batch
         viewModel.batchCalculated = true
         viewModel.prePopulateRecommendedScales(systemConfig: self)
+    }
+
+    /// Applies the currently selected dev mode dataset to the view model.
+    func applySelectedDevModeDataset(to viewModel: BatchConfigViewModel) {
+        revertDevMode(to: viewModel)
+        clearSyntheticMeasurements(from: viewModel)
+        clearSyntheticDataSet2(from: viewModel)
+
+        switch selectedDevModeDataset {
+        case .tropicalPunch:
+            applyDevMode(to: viewModel)
+            syntheticMeasurementsEnabled = true
+            syntheticDataSet1Enabled = true
+            syntheticDataSet2Enabled = false
+            applySyntheticMeasurements(to: viewModel)
+        case .mixedBerryMollyStars:
+            applySyntheticDataSet2(to: viewModel)
+            syntheticMeasurementsEnabled = false
+            syntheticDataSet1Enabled = false
+            syntheticDataSet2Enabled = true
+        }
     }
 
     /// Reverts developer mode overrides (Tropical Punch dataset).
@@ -1865,9 +1915,11 @@ final class SystemConfig {
         viewModel.hpSubstrateBeakerID = nil
         viewModel.hpSugarMixBeakerID = nil
         viewModel.hpActivationTrayID = nil
+        viewModel.hpTrayTransferBeakerID = nil
         viewModel.hpSubstrateScaleID = nil
         viewModel.hpSugarMixScaleID = nil
         viewModel.hpActivationScaleID = nil
+        viewModel.hpTrayTransferBeakerReading = nil
         viewModel.hpSubstrateSugarTransfer = nil
         viewModel.hpSubstrateActivationTransfer = nil
     }
@@ -1883,7 +1935,6 @@ final class SystemConfig {
         viewModel.selectedActive = .mdma
         viewModel.units = .mg
         viewModel.activeConcentration = 10.0
-        viewModel.additionalActiveWaterML = 3.043
 
         // Gelatin
         viewModel.gelatinPercentage = 6.0
@@ -1907,7 +1958,7 @@ final class SystemConfig {
         viewModel.colorsLocked = false
         viewModel.colorCompositionLocked = false
         viewModel.selectedColors[.coral] = 100.0
-        viewModel.colorVolumePercent = 0.6
+        viewModel.colorVolumePercent = 0.350
 
         // Lock all selections
         viewModel.oilsLocked = true
@@ -1996,11 +2047,13 @@ final class SystemConfig {
         viewModel.hpSubstrateBeakerID = nil
         viewModel.hpSugarMixBeakerID = nil
         viewModel.hpActivationTrayID = nil
+        viewModel.hpTrayTransferBeakerID = nil
         viewModel.hpSubstrateStirBarID = nil
         viewModel.hpSugarMixStirBarID = nil
         viewModel.hpSubstrateScaleID = nil
         viewModel.hpSugarMixScaleID = nil
         viewModel.hpActivationScaleID = nil
+        viewModel.hpTrayTransferBeakerReading = nil
         viewModel.hpSubstrateSugarTransfer = nil
         viewModel.hpSubstrateActivationTransfer = nil
         viewModel.hpTransferScaleID = nil
@@ -2027,6 +2080,7 @@ final class SystemConfig {
         case .oldBear:  oldBear = spec
         case .newBear:  newBear = spec
         case .mushroom: mushroom = spec
+        case .cylinder: cylinder = spec
         }
     }
 
@@ -2039,6 +2093,7 @@ final class SystemConfig {
         case .oldBear:  return oldBear
         case .newBear:  return newBear
         case .mushroom: return mushroom
+        case .cylinder: return cylinder
         }
     }
 
@@ -2057,6 +2112,9 @@ final class SystemConfig {
         // Additives
         if potassiumSorbatePercent != 0.096 { return true }
         if citricAcidPercent != 0.786 { return true }
+        // Preservative solution ratios
+        if citricAcidSolutionRatio != 1.0 { return true }
+        if kSorbateSolutionRatio != 1.0 { return true }
         // Densities
         for (keyPath, defaultVal) in Self.defaultDensities {
             if self[keyPath: keyPath] != defaultVal { return true }
@@ -2112,8 +2170,11 @@ final class SystemConfig {
             "densityTerpenes": 0.8411,
             "lsdTransferWaterML": 1.000,
             "defaultLsdUgPerTab": 117.0,
-            "sugarMixtureOveragePercent": 5.0,
+            "sugarMixtureOveragePercent": 15.0,
+            "gelatinMixtureOveragePercent": 15.0,
             "additivesInputAsMassPercent": false,
+            "citricAcidSolutionRatio": 1.0,
+            "kSorbateSolutionRatio": 1.0,
             "sliderVibrationsEnabled": true,
             "sliderResolution": 5.0,
             "doubleVisionEnabled": true,
@@ -2145,7 +2206,8 @@ final class SystemConfig {
             "estimatedFinalMixDensity", "densityWater", "densityGlucoseSyrup", "densitySucrose",
             "densityGelatin", "densityCitricAcid", "densityPotassiumSorbate",
             "densityFlavorOil", "densityFoodColoring", "densityTerpenes",
-            "lsdTransferWaterML", "defaultLsdUgPerTab", "sugarMixtureOveragePercent",
+            "lsdTransferWaterML", "defaultLsdUgPerTab", "sugarMixtureOveragePercent", "gelatinMixtureOveragePercent",
+            "citricAcidSolutionRatio", "kSorbateSolutionRatio",
             "resolutionBeakerEmpty", "resolutionBeakerPlusGelatin",
             "resolutionBeakerPlusSugar", "resolutionBeakerPlusActive",
             "resolutionBeakerResidue", "resolutionSyringeEmpty",
@@ -2229,7 +2291,10 @@ final class SystemConfig {
             "lsdTransferWaterML": lsdTransferWaterML,
             "defaultLsdUgPerTab": defaultLsdUgPerTab,
             "sugarMixtureOveragePercent": sugarMixtureOveragePercent,
+            "gelatinMixtureOveragePercent": gelatinMixtureOveragePercent,
             "additivesInputAsMassPercent": additivesInputAsMassPercent,
+            "citricAcidSolutionRatio": citricAcidSolutionRatio,
+            "kSorbateSolutionRatio": kSorbateSolutionRatio,
             "sliderVibrationsEnabled": sliderVibrationsEnabled,
             "sliderResolution": sliderResolution,
             "doubleVisionEnabled": doubleVisionEnabled,
@@ -2284,7 +2349,10 @@ final class SystemConfig {
         if let v = json["lsdTransferWaterML"] as? Double { lsdTransferWaterML = v }
         if let v = json["defaultLsdUgPerTab"] as? Double { defaultLsdUgPerTab = v }
         if let v = json["sugarMixtureOveragePercent"] as? Double { sugarMixtureOveragePercent = v }
+        if let v = json["gelatinMixtureOveragePercent"] as? Double { gelatinMixtureOveragePercent = v }
         if let v = json["additivesInputAsMassPercent"] as? Bool { additivesInputAsMassPercent = v }
+        if let v = json["citricAcidSolutionRatio"] as? Double { citricAcidSolutionRatio = v }
+        if let v = json["kSorbateSolutionRatio"] as? Double { kSorbateSolutionRatio = v }
         if let v = json["sliderVibrationsEnabled"] as? Bool { sliderVibrationsEnabled = v }
         if let v = json["sliderResolution"] as? Double { sliderResolution = v }
         if let v = json["doubleVisionEnabled"] as? Bool { doubleVisionEnabled = v }
@@ -2346,12 +2414,15 @@ final class SystemConfig {
         defaultLsdUgPerTab = 117.0
 
         // Mixture overage
-        sugarMixtureOveragePercent = 5.0
+        sugarMixtureOveragePercent = 15.0
+        gelatinMixtureOveragePercent = 15.0
 
         // Additives
         potassiumSorbatePercent = 0.096
         citricAcidPercent = 0.786
         additivesInputAsMassPercent = false
+        citricAcidSolutionRatio = 1.0
+        kSorbateSolutionRatio = 1.0
 
         // Densities
         resetDensitiesToDefault()

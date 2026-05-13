@@ -16,30 +16,10 @@
 //    FlavorOil         – oil-based flavor catalog
 //    FlavorSelection   – type-erased wrapper for either flavor type
 //    FlavorSourceType  – picker tab identity (terpenes vs oils)
-//    SubstanceSolubility – solubility data for water-budget calculations
 //
 
 import Foundation
 import SwiftUI
-
-// MARK: - Substance Solubility
-
-/// Aqueous solubility at ~20 °C expressed as grams per 100 mL water.
-/// Used by `BatchCalculator` to determine the minimum activation water
-/// volume needed to fully dissolve preservatives.
-enum SubstanceSolubility: Double {
-    case citricAcid       = 59.0   // g / 100 mL
-    case potassiumSorbate = 58.2
-    case sucrose          = 200.0
-
-    /// The raw solubility value (grams per 100 mL water).
-    var gPer100mL: Double { rawValue }
-
-    /// Minimum water volume (mL) required to dissolve `mass` grams of this substance.
-    func minWaterML(toDissolveGrams mass: Double) -> Double {
-        (mass / gPer100mL) * 100.0
-    }
-}
 
 // MARK: - Concentration Unit
 
@@ -64,6 +44,7 @@ enum GummyShape: String, CaseIterable, Identifiable {
     case oldBear  = "Old Bear"
     case newBear  = "New Bear"
     case mushroom = "Mushroom"
+    case cylinder = "Cylinder"
 
     var id: String { rawValue }
 
@@ -77,6 +58,7 @@ enum GummyShape: String, CaseIterable, Identifiable {
         case .oldBear:  return "teddybear.fill"
         case .newBear:  return "teddybear"
         case .mushroom: return "umbrella.fill"
+        case .cylinder: return "cylinder.fill"
         }
     }
 }
@@ -113,11 +95,14 @@ enum Active: String, CaseIterable, Identifiable {
 /// Food coloring options with their display colors.
 enum GummyColor: String, CaseIterable, Identifiable {
     case coral  = "Coral"
-    case green  = "Green"
-    case red    = "Red"
     case yellow = "Yellow"
+    case orange = "Orange"
+    case red    = "Red"
+    case green  = "Green"
+    case lime   = "Lime"
     case blue   = "Blue"
-    case plum   = "Plum"
+    case purple = "Purple"
+    case pink   = "Pink"
 
     var id: String { rawValue }
 
@@ -125,11 +110,14 @@ enum GummyColor: String, CaseIterable, Identifiable {
     var swiftUIColor: Color {
         switch self {
         case .coral:  return Color(red: 1.0,  green: 0.45, blue: 0.35)
-        case .green:  return Color(red: 0.2,  green: 0.78, blue: 0.35)
-        case .red:    return Color(red: 0.9,  green: 0.15, blue: 0.18)
         case .yellow: return Color(red: 0.95, green: 0.82, blue: 0.2)
+        case .orange: return Color(red: 1.0,  green: 0.6,  blue: 0.1)
+        case .red:    return Color(red: 0.9,  green: 0.15, blue: 0.18)
+        case .green:  return Color(red: 0.2,  green: 0.78, blue: 0.35)
+        case .lime:   return Color(red: 0.6,  green: 0.9,  blue: 0.1)
         case .blue:   return Color(red: 0.2,  green: 0.5,  blue: 0.95)
-        case .plum:   return Color(red: 0.55, green: 0.2,  blue: 0.6)
+        case .purple: return Color(red: 0.55, green: 0.2,  blue: 0.85)
+        case .pink:   return Color(red: 1.0,  green: 0.4,  blue: 0.7)
         }
     }
 }
@@ -190,20 +178,31 @@ enum FlavorOil: String, CaseIterable, Identifiable {
     case bananaCreampie = "Banana Creampie"
     case blackCherry    = "Black Cherry"
     case blackberry     = "Blackberry"
+    case blueRaspberry  = "Blue Raspberry"
     case blueberry      = "Blueberry"
+    case butterscotch   = "Butterscotch"
     case cherry         = "Cherry"
     case coconut        = "Coconut"
+    case cottonCandy    = "Cotton Candy"
     case cranberry      = "Cranberry"
     case grape          = "Grape"
+    case lemonOil       = "Lemon Oil"
     case lemonade       = "Lemonade"
+    case marshmallow    = "Marshmallow"
     case melon          = "Melon"
     case orange         = "Orange"
     case orangeCream    = "Orange Cream"
+    case peach          = "Peach"
     case pear           = "Pear"
+    case pineapple      = "Pineapple"
     case pomegranate    = "Pomegranate"
     case raspberry      = "Raspberry"
+    case rootBeer       = "Root Beer"
+    case spearmint      = "Spearmint"
     case strawberry     = "Strawberry"
+    case strawberryKiwi = "Strawberry Kiwi"
     case tropicalPunch  = "Tropical Punch"
+    case vanilla        = "Vanilla"
     case watermelon     = "Watermelon"
 
     var id: String { rawValue }
@@ -264,12 +263,12 @@ struct TrayConfig: Identifiable {
     var lsdUgPerTab: Double = 117.0
 
     // Gelatin
-    var gelatinPercentage: Double = 5.430
+    var gelatinPercentage: Double = 6.500
 
     // Colors
     var selectedColors: [GummyColor: Double] = [:]
     var colorsLocked: Bool = false
-    var colorVolumePercent: Double = 0.581
+    var colorVolumePercent: Double = 0.350
     var colorCompositionLocked: Bool = false
 
     // Flavors
@@ -278,6 +277,6 @@ struct TrayConfig: Identifiable {
     var terpenesLocked: Bool = false
     var flavorSourceTab: FlavorSourceType = .terpenes
     var flavorCompositionLocked: Bool = false
-    var terpeneVolumePPM: Double = 219.9
-    var flavorOilVolumePercent: Double = 0.481
+    var terpeneVolumePPM: Double = 650.0
+    var flavorOilVolumePercent: Double = 0.650
 }

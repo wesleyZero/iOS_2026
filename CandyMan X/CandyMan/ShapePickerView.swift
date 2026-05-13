@@ -30,11 +30,13 @@ import SwiftData
 enum MainSection: String, CaseIterable, Identifiable {
     case inputSummary              = "Summary"
     case multiActiveBatchOutput    = "Multi-Active Output"
+    case multiActiveTrayOutput     = "Tray Output"
     case batchOutput               = "Batch Output"
     case measurementEquipment      = "Measurement Equipment"
     case batchValidation           = "Batch Validation"
     case relativeFractions         = "Composition Data (Theoretical)"
-    case weightMeasurements        = "Batch Measurements"
+    case bulkBatchMeasurements     = "Bulk Measurements"
+    case weightMeasurements        = "Tray Measurements"
     case calibrationMeasurements   = "Calibration Measurements"
     case experimentalData2         = "Experiment Data 2"
     case sigFigAnalysis            = "Significant Figures"
@@ -43,9 +45,9 @@ enum MainSection: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     static let defaultOrder: [MainSection] = [
-        .inputSummary, .multiActiveBatchOutput, .batchOutput, .measurementEquipment, .batchValidation,
-        .relativeFractions, .weightMeasurements, .calibrationMeasurements, .experimentalData2,
-        .sigFigAnalysis, .resetSection
+        .inputSummary, .multiActiveBatchOutput, .multiActiveTrayOutput, .batchOutput, .measurementEquipment, .batchValidation,
+        .relativeFractions, .bulkBatchMeasurements, .weightMeasurements, .calibrationMeasurements,
+        .experimentalData2, .sigFigAnalysis, .resetSection
     ]
 
     static func load() -> [MainSection] {
@@ -220,6 +222,7 @@ struct ShapePickerView: View {
                             VStack(spacing: 12) {
                                 if viewModel.multiActiveEnabled {
                                     MultiActiveBatchOutputView().cardStyle()
+                                    MultiActiveTrayOutputView().cardStyle()
                                 } else {
                                     BatchOutputView().cardStyle()
                                 }
@@ -231,6 +234,7 @@ struct ShapePickerView: View {
                             .fixedSize(horizontal: false, vertical: true)
 
                             VStack(spacing: 12) {
+                                BulkBatchMeasurementsView().cardStyle()
                                 WeightMeasurementsView().cardStyle()
                                 CalibrationMeasurementsView().cardStyle()
                                 ExperimentalData2View().cardStyle()
@@ -257,7 +261,7 @@ struct ShapePickerView: View {
                             templateSection.cardStyle()
                             chooseShape.cardStyle()
                             chooseTrays(viewModel: viewModel).cardStyle()
-                            if viewModel.trayCount > 1 {
+                            if viewModel.trayCount >= 1 {
                                 multiActiveSection.cardStyle()
                             }
                             chooseActive(viewModel: viewModel).cardStyle()
@@ -283,7 +287,7 @@ struct ShapePickerView: View {
                         templateSection.cardStyle()
                         chooseShape.cardStyle()
                         chooseTrays(viewModel: viewModel).cardStyle()
-                        if viewModel.trayCount > 1 {
+                        if viewModel.trayCount >= 1 {
                             multiActiveSection.cardStyle()
                         }
                         chooseActive(viewModel: viewModel).cardStyle()
@@ -331,7 +335,7 @@ struct ShapePickerView: View {
         }
         .onChange(of: viewModel.trayCount) {
             viewModel.checkAndClearTemplateIfChanged()
-            if viewModel.trayCount <= 1 && viewModel.multiActiveEnabled {
+            if viewModel.trayCount < 1 && viewModel.multiActiveEnabled {
                 withAnimation(.cmSpring) { viewModel.disableMultiActive() }
             } else if viewModel.multiActiveEnabled {
                 viewModel.saveCurrentTrayToConfigs()
@@ -489,6 +493,7 @@ struct ShapePickerView: View {
                         BatchConfigViewModel.TrayActivationState()
                     }
                 }
+                viewModel.batchActivated = false
                 viewModel.prePopulateRecommendedScales(systemConfig: systemConfig)
                 withAnimation(.cmSpring) {
                     viewModel.batchCalculated = true
@@ -547,13 +552,8 @@ struct ShapePickerView: View {
                     systemConfig.developerMode = newValue
                     if newValue {
                         systemConfig.expandDetailSectionsByDefault = true
-                        systemConfig.syntheticMeasurementsEnabled = true
-                        systemConfig.syntheticDataSet1Enabled = true
-                        systemConfig.syntheticDataSet2Enabled = true
                         withAnimation(.cmSpring) {
-                            systemConfig.applyDevMode(to: viewModel)
-                            systemConfig.applySyntheticMeasurements(to: viewModel)
-                            systemConfig.applySyntheticDataSet2(to: viewModel)
+                            systemConfig.applySelectedDevModeDataset(to: viewModel)
                         }
                     } else {
                         withAnimation(.cmSpring) {
@@ -582,8 +582,8 @@ struct ShapePickerView: View {
                 CMHaptic.heavy()
                 let result = BatchCalculator.calculate(viewModel: viewModel, systemConfig: systemConfig)
                 if systemConfig.developerMode {
-                    saveName = "DevMode | Dataset01"
-                    saveBatchID = "XX"
+                    saveName = "DevMode | \(systemConfig.selectedDevModeDataset.rawValue)"
+                    saveBatchID = systemConfig.selectedDevModeDataset.batchID
                 } else {
                     saveName = ""
                     saveBatchID = systemConfig.nextBatchID()
@@ -686,6 +686,10 @@ struct ShapePickerView: View {
             if viewModel.multiActiveEnabled {
                 MultiActiveBatchOutputView()
             }
+        case .multiActiveTrayOutput:
+            if viewModel.multiActiveEnabled {
+                MultiActiveTrayOutputView()
+            }
         case .batchOutput:
             if !viewModel.multiActiveEnabled {
                 BatchOutputView()
@@ -693,6 +697,7 @@ struct ShapePickerView: View {
         case .measurementEquipment:    MeasurementEquipmentView()
         case .batchValidation:         BatchValidationView()
         case .relativeFractions:       RelativeFractionsView()
+        case .bulkBatchMeasurements:   BulkBatchMeasurementsView()
         case .weightMeasurements:      WeightMeasurementsView()
         case .calibrationMeasurements: CalibrationMeasurementsView()
         case .experimentalData2:       ExperimentalData2View()
@@ -722,8 +727,8 @@ struct ShapePickerView: View {
 
         return VStack(spacing: 4) {
             sectionHeader(title: "Gelatin",
-                          showReset: viewModel.gelatinPercentage != 5.430) {
-                viewModel.gelatinPercentage = 5.430
+                          showReset: viewModel.gelatinPercentage != 6.500) {
+                viewModel.gelatinPercentage = 6.500
             }
             HStack(alignment: .firstTextBaseline) {
                 Button {
@@ -863,7 +868,7 @@ struct ShapePickerView: View {
         let spec = systemConfig.spec(for: viewModel.selectedShape)
         let perTray = spec.count
         let totalGummies = viewModel.totalGummies(using: systemConfig)
-        let traysChanged = viewModel.trayCount != 0 || viewModel.extraGummies != 0
+        let traysChanged = viewModel.trayCount != 0
         let fractionalTrays = perTray > 0
             ? Double(totalGummies) / Double(perTray)
             : Double(viewModel.trayCount)
@@ -877,7 +882,6 @@ struct ShapePickerView: View {
                         CMHaptic.light()
                         withAnimation(.cmSpring) {
                             viewModel.trayCount = 0
-                            viewModel.extraGummies = 0
                         }
                     } label: {
                         Image(systemName: "arrow.counterclockwise")
@@ -923,40 +927,6 @@ struct ShapePickerView: View {
                 }
             }.padding(.horizontal, 24).padding(.vertical, 8)
 
-            // Separator
-            if !viewModel.multiActiveEnabled {
-                Text("+")
-                    .font(.caption).foregroundStyle(CMTheme.textTertiary)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.vertical, 2)
-
-                // Extra gummies picker (disabled in multi-active mode)
-                HStack {
-                    Button {
-                        CMHaptic.selection()
-                        withAnimation(.cmSpring) { viewModel.extraGummies = max(0, viewModel.extraGummies - 1) }
-                    } label: {
-                        Image(systemName: "minus.circle.fill").font(.system(size: 30)).foregroundStyle(systemConfig.designTitle)
-                    }
-                    Spacer()
-                    Text("\(viewModel.extraGummies)")
-                        .font(.system(size: 20, weight: .bold))
-                        .skittleSwirl()
-                        .contentTransition(.numericText())
-                    Text("Gumm\(viewModel.extraGummies == 1 ? "y" : "ies")").font(.system(size: 20)).foregroundStyle(CMTheme.textSecondary)
-                    Spacer()
-                    Button {
-                        CMHaptic.selection()
-                        let max = perTray - 1
-                        withAnimation(.cmSpring) { viewModel.extraGummies = min(max, viewModel.extraGummies + 1) }
-                    } label: {
-                        Image(systemName: "plus.circle.fill").font(.system(size: 36)).foregroundStyle(systemConfig.designTitle)
-                    }
-                    .opacity(viewModel.extraGummies < perTray - 1 ? 1 : 0.3)
-                    .disabled(viewModel.extraGummies >= perTray - 1)
-                }.padding(.horizontal, 24).padding(.vertical, 8)
-            }
-
             // Fine print
             Text("\(perTray) gummies / tray")
                 .cmFootnote()
@@ -968,7 +938,7 @@ struct ShapePickerView: View {
         ActivesSectionView(viewModel: viewModel)
     }
 
-    // MARK: - Multi-Active Toggle
+    // MARK: - Multi-Active Tray Picker
 
     private var multiActiveSection: some View {
         @Bindable var viewModel = viewModel
@@ -978,47 +948,31 @@ struct ShapePickerView: View {
                     .font(.headline)
                     .foregroundStyle(systemConfig.designTitle)
                 Spacer()
-                Toggle("", isOn: Binding(
-                    get: { viewModel.multiActiveEnabled },
-                    set: { newValue in
-                        CMHaptic.medium()
-                        withAnimation(.cmSpring) {
-                            if newValue {
-                                viewModel.enableMultiActive()
-                            } else {
-                                viewModel.disableMultiActive()
-                            }
-                        }
-                    }
-                ))
-                .labelsHidden()
             }
             .padding(.horizontal, 16).padding(.vertical, 12)
 
-            if viewModel.multiActiveEnabled {
-                Picker("Tray", selection: Binding(
-                    get: { viewModel.selectedTrayIndex },
-                    set: { newIndex in
-                        CMHaptic.selection()
-                        withAnimation(.cmSpring) {
-                            viewModel.loadTrayConfig(newIndex)
-                        }
-                    }
-                )) {
-                    ForEach(0..<viewModel.trayCount, id: \.self) { i in
-                        Text("Tray \(i + 1)").tag(i)
+            Picker("Tray", selection: Binding(
+                get: { viewModel.selectedTrayIndex },
+                set: { newIndex in
+                    CMHaptic.selection()
+                    withAnimation(.cmSpring) {
+                        viewModel.loadTrayConfig(newIndex)
                     }
                 }
-                .pickerStyle(.wheel)
-                .frame(height: 100)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-
-                Text("Configuring Tray \(viewModel.selectedTrayIndex + 1) of \(viewModel.trayCount)")
-                    .font(.caption)
-                    .foregroundStyle(systemConfig.designAlert)
-                    .padding(.bottom, 8)
+            )) {
+                ForEach(0..<viewModel.trayCount, id: \.self) { i in
+                    Text("Tray \(i + 1)").tag(i)
+                }
             }
+            .pickerStyle(.wheel)
+            .frame(height: 100)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+
+            Text("Configuring Tray \(viewModel.selectedTrayIndex + 1) of \(viewModel.trayCount)")
+                .font(.caption)
+                .foregroundStyle(systemConfig.designAlert)
+                .padding(.bottom, 8)
         }
     }
 

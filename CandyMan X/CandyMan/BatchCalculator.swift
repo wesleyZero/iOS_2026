@@ -88,6 +88,8 @@ struct MultiActiveBatchResult {
     struct PerTrayResult: Identifiable {
         let id: Int  // tray index (0-based)
         let activationMix: MixGroup
+        let sugarMix: MixGroup
+        let gelatinMix: MixGroup
         let trayConfig: TrayConfig
         let vMixPerTray: Double
     }
@@ -104,7 +106,7 @@ enum BatchCalculator {
     ///
     /// The calculation flows in four stages:
     /// 1. Determine the target pour volume (`vMix`).
-    /// 2. Build the activation mix (preservatives, colors, flavors, terpenes, water).
+    /// 2. Build the activation mix (preservatives with solution water, colors, flavors, terpenes).
     /// 3. Build the gelatin mix (gelatin powder + hydration water).
     /// 4. Build the sugar mix as the residual that closes the volume budget exactly.
     static func calculate(
@@ -113,9 +115,19 @@ enum BatchCalculator {
     ) -> BatchResult {
 
         // ── 1. Target pour volume ────────────────────────────────────────────
-        let spec  = systemConfig.spec(for: viewModel.selectedShape)
-        let vBase = Double(viewModel.totalGummies(using: systemConfig)) * spec.volumeML
-        let vMix  = vBase * viewModel.overageFactor
+        let spec       = systemConfig.spec(for: viewModel.selectedShape)
+        let totalGummies = viewModel.totalGummies(using: systemConfig)
+        let vBase      = Double(totalGummies) * spec.volumeML
+        let vMix       = vBase * viewModel.overageFactor
+
+        // LSD solution volume to add to activation mix (keptVolume)
+        let lsdTransferVolumeML = lsdKeptVolumeML(
+            active: viewModel.selectedActive,
+            concentration: viewModel.activeConcentration,
+            gummies: Double(totalGummies),
+            ugPerTab: viewModel.lsdUgPerTab,
+            transferWaterML: systemConfig.lsdTransferWaterML
+        )
 
         // ── 2–4. Build mix groups using helpers ──────────────────────────────
         let activationMix = buildActivationMix(
@@ -126,6 +138,7 @@ enum BatchCalculator {
             selectedFlavors: viewModel.selectedFlavors,
             terpeneVolumePPM: viewModel.terpeneVolumePPM,
             additionalActiveWaterML: viewModel.additionalActiveWaterML,
+            lsdTransferVolumeML: lsdTransferVolumeML,
             systemConfig: systemConfig
         )
 
@@ -175,16 +188,38 @@ enum BatchCalculator {
         var totalGelatinVolume = 0.0
         var totalGelatinWaterVolume = 0.0
 
-        for (index, trayConfig) in viewModel.trayConfigs.enumerated() {
+        let gummiesPerTray = Double(viewModel.totalGummies(using: systemConfig)) / Double(max(1, viewModel.trayCount))
+
+        for (index, savedConfig) in viewModel.trayConfigs.enumerated() {
+            // For the currently selected tray, use the live flat-state properties
+            // (which may not have been saved to trayConfigs yet). For other trays,
+            // use the stored config.
+            let isCurrentTray = (index == viewModel.selectedTrayIndex)
+
+            let trayConfig: TrayConfig
+            if isCurrentTray {
+                trayConfig = viewModel.captureFlatToTrayConfig(id: savedConfig.id)
+            } else {
+                trayConfig = savedConfig
+            }
+
             // Per-tray additional water: use flat property for selected tray, stored state for others
             let additionalWater: Double
-            if index == viewModel.selectedTrayIndex {
+            if isCurrentTray {
                 additionalWater = viewModel.additionalActiveWaterML
             } else if viewModel.trayActivationStates.indices.contains(index) {
                 additionalWater = viewModel.trayActivationStates[index].additionalActiveWaterML
             } else {
                 additionalWater = 0
             }
+
+            let lsdTransferVolumeML = lsdKeptVolumeML(
+                active: trayConfig.selectedActive,
+                concentration: trayConfig.activeConcentration,
+                gummies: gummiesPerTray,
+                ugPerTab: trayConfig.lsdUgPerTab,
+                transferWaterML: systemConfig.lsdTransferWaterML
+            )
 
             let activationMix = buildActivationMix(
                 vMix: vMixPerTray,
@@ -194,6 +229,7 @@ enum BatchCalculator {
                 selectedFlavors: trayConfig.selectedFlavors,
                 terpeneVolumePPM: trayConfig.terpeneVolumePPM,
                 additionalActiveWaterML: additionalWater,
+                lsdTransferVolumeML: lsdTransferVolumeML,
                 systemConfig: systemConfig
             )
             totalActivationVolume += activationMix.totalVolumeML
@@ -214,9 +250,14 @@ enum BatchCalculator {
                 }
             }
 
+            let perTraySugarVolume = vMixPerTray - activationMix.totalVolumeML - gelatinMix.totalVolumeML
+            let perTraySugarMix = buildSugarMix(vRemaining: perTraySugarVolume, systemConfig: systemConfig)
+
             perTrayResults.append(.init(
                 id: trayConfig.id,
                 activationMix: activationMix,
+                sugarMix: perTraySugarMix,
+                gelatinMix: gelatinMix,
                 trayConfig: trayConfig,
                 vMixPerTray: vMixPerTray
             ))
@@ -243,6 +284,23 @@ enum BatchCalculator {
 
     // MARK: - Helpers
 
+    /// Returns the volume (mL) of a 1-tab/transferWater solution needed to deliver the
+    /// fractional LSD remainder (lsdInLiquid) when LSD is the active substance.
+    private static func lsdKeptVolumeML(
+        active: Active,
+        concentration: Double,
+        gummies: Double,
+        ugPerTab: Double,
+        transferWaterML: Double
+    ) -> Double {
+        guard active == .lsd, ugPerTab > 0 else { return 0 }
+        let totalActive = concentration * gummies
+        let tabsNeeded  = Int(totalActive / ugPerTab)
+        let lsdInLiquid = totalActive - Double(tabsNeeded) * ugPerTab
+        guard lsdInLiquid > 0 else { return 0 }
+        return (lsdInLiquid / ugPerTab) * transferWaterML
+    }
+
     /// Builds the activation mix for a given volume budget.
     private static func buildActivationMix(
         vMix: Double,
@@ -252,25 +310,44 @@ enum BatchCalculator {
         selectedFlavors: [FlavorSelection: Double],
         terpeneVolumePPM: Double,
         additionalActiveWaterML: Double,
+        lsdTransferVolumeML: Double = 0,
         systemConfig: SystemConfig
     ) -> MixGroup {
         var components: [BatchComponent] = []
 
-        // Citric acid
+        // Citric acid (pure substance)
         let vCitric = (systemConfig.citricAcidPercent / 100.0) * vMix
         let mCitric = vCitric * systemConfig.densityCitricAcid
         components.append(BatchComponent(
             label: "Citric Acid", massGrams: mCitric, volumeML: vCitric, displayUnit: "g",
             activationCategory: .preservative
         ))
+        // Citric acid solution water
+        let mWaterCitric = mCitric * systemConfig.citricAcidSolutionRatio
+        let vWaterCitric = mWaterCitric / systemConfig.densityWater
+        if vWaterCitric > 0 {
+            components.append(BatchComponent(
+                label: "CA Solution Water", massGrams: mWaterCitric, volumeML: vWaterCitric, displayUnit: "ml",
+                activationCategory: .preservative
+            ))
+        }
 
-        // Potassium sorbate
+        // Potassium sorbate (pure substance)
         let vSorbate = (systemConfig.potassiumSorbatePercent / 100.0) * vMix
         let mSorbate = vSorbate * systemConfig.densityPotassiumSorbate
         components.append(BatchComponent(
             label: "Potassium Sorbate", massGrams: mSorbate, volumeML: vSorbate, displayUnit: "g",
             activationCategory: .preservative
         ))
+        // Potassium sorbate solution water
+        let mWaterSorbate = mSorbate * systemConfig.kSorbateSolutionRatio
+        let vWaterSorbate = mWaterSorbate / systemConfig.densityWater
+        if vWaterSorbate > 0 {
+            components.append(BatchComponent(
+                label: "KS Solution Water", massGrams: mWaterSorbate, volumeML: vWaterSorbate, displayUnit: "ml",
+                activationCategory: .preservative
+            ))
+        }
 
         // Colors
         let vColorTotal = (colorVolumePercent / 100.0) * vMix
@@ -311,15 +388,23 @@ enum BatchCalculator {
             ))
         }
 
-        // Activation water — solubility-based + additional
-        let waterForCitric  = SubstanceSolubility.citricAcid.minWaterML(toDissolveGrams: mCitric)
-        let waterForSorbate = SubstanceSolubility.potassiumSorbate.minWaterML(toDissolveGrams: mSorbate)
-        let vActivationWater = waterForCitric + waterForSorbate + additionalActiveWaterML
-        let mActivationWater = vActivationWater * systemConfig.densityWater
-        components.append(BatchComponent(
-            label: "Activation Water", massGrams: mActivationWater, volumeML: vActivationWater, displayUnit: "ml",
-            activationCategory: .preservative
-        ))
+        // Additional water (user-adjustable extra dissolving water)
+        if additionalActiveWaterML > 0 {
+            let mAdditional = additionalActiveWaterML * systemConfig.densityWater
+            components.append(BatchComponent(
+                label: "Additional Water", massGrams: mAdditional, volumeML: additionalActiveWaterML, displayUnit: "ml",
+                activationCategory: .preservative
+            ))
+        }
+
+        // LSD transfer water
+        if lsdTransferVolumeML > 0 {
+            let mTransfer = lsdTransferVolumeML * systemConfig.densityWater
+            components.append(BatchComponent(
+                label: "LSD Transfer Water", massGrams: mTransfer, volumeML: lsdTransferVolumeML, displayUnit: "ml",
+                activationCategory: .preservative
+            ))
+        }
 
         return MixGroup(name: "Activation Mix", components: components)
     }

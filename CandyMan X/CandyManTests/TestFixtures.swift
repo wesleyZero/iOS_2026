@@ -40,7 +40,7 @@ enum TestFixtures {
     ///   - Colors: Coral 10%, Red 30%, Yellow 60%
     ///   - Terpene PPM: 199
     ///   - Flavor oil vol%: 0.481
-    ///   - Color vol%: 0.581
+    ///   - Color vol%: 0.350
     static func makeTropicalPunchViewModel() -> BatchConfigViewModel {
         let vm = BatchConfigViewModel()
 
@@ -54,7 +54,6 @@ enum TestFixtures {
         vm.units = .ug
         vm.activeConcentration = 10.0
         vm.lsdUgPerTab = 117.0
-        vm.additionalActiveWaterML = 0.0
 
         // Gelatin
         vm.gelatinPercentage = 5.430
@@ -83,7 +82,7 @@ enum TestFixtures {
         ]
         vm.colorsLocked = true
         vm.colorCompositionLocked = true
-        vm.colorVolumePercent = 0.581
+        vm.colorVolumePercent = 0.350
 
         return vm
     }

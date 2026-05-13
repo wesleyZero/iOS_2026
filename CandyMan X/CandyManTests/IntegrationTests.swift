@@ -40,8 +40,8 @@ struct IntegrationTests {
         #expect(result.sugarMix.components.count == 3)
 
         // Step 6: Verify component count matches expectation
-        // Activation: citric + sorbate + 3 colors + 2 oils + 2 terpenes + water = 10
-        #expect(result.activationMix.components.count == 10)
+        // Activation: citric + CA water + sorbate + KS water + 3 colors + 2 oils + 2 terpenes + LSD water = 12
+        #expect(result.activationMix.components.count == 12)
     }
 
     // MARK: - Measurement Derivation Pipeline

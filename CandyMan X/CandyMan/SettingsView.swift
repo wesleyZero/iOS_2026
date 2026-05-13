@@ -702,6 +702,50 @@ struct SettingsView: View {
                 Text(String(format: "Mass %% of the final gummy mixture (est. ρ %.3f g/mL).", rhoMix))
                     .cmFootnote().cmSettingsRowPadding()
             }
+
+            Divider().padding(.horizontal, 16).padding(.vertical, 4)
+
+            HStack {
+                Text("Citric Acid Solution").font(.body)
+                if systemConfig.citricAcidSolutionRatio != 1.0 {
+                    Button {
+                        CMHaptic.light()
+                        withAnimation(.cmSpring) { systemConfig.citricAcidSolutionRatio = 1.0 }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise.circle")
+                            .cmResetIcon(color: systemConfig.designAlert)
+                    }
+                    .buttonStyle(.plain)
+                    .cmResetTransition()
+                }
+                Spacer()
+                Text("1 :").font(.body).foregroundStyle(.secondary)
+                NumericField(value: $systemConfig.citricAcidSolutionRatio, decimals: 1)
+                    .multilineTextAlignment(.trailing).frame(width: 50)
+            }.cmSettingsRowPadding()
+
+            Divider().padding(.leading, 16)
+
+            HStack {
+                Text("KSorbate Solution").font(.body)
+                if systemConfig.kSorbateSolutionRatio != 1.0 {
+                    Button {
+                        CMHaptic.light()
+                        withAnimation(.cmSpring) { systemConfig.kSorbateSolutionRatio = 1.0 }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise.circle")
+                            .cmResetIcon(color: systemConfig.designAlert)
+                    }
+                    .buttonStyle(.plain)
+                    .cmResetTransition()
+                }
+                Spacer()
+                Text("1 :").font(.body).foregroundStyle(.secondary)
+                NumericField(value: $systemConfig.kSorbateSolutionRatio, decimals: 1)
+                    .multilineTextAlignment(.trailing).frame(width: 50)
+            }.cmSettingsRowPadding()
+            Text("Mass ratio of substance to water in pre-prepared preservative solutions.")
+                .cmFootnote().cmSettingsRowPadding()
         }
     }
 
@@ -774,13 +818,37 @@ struct SettingsView: View {
 
             Divider().padding(.horizontal, 16).padding(.vertical, 4)
 
+            // Gelatin Mixture Overage
+            HStack {
+                Text("Gelatin Mixture Overage").font(.body)
+                if systemConfig.gelatinMixtureOveragePercent != 15.0 {
+                    Button {
+                        CMHaptic.light()
+                        withAnimation(.cmSpring) { systemConfig.gelatinMixtureOveragePercent = 15.0 }
+                    } label: {
+                        Image(systemName: "arrow.counterclockwise.circle")
+                            .cmResetIcon(color: systemConfig.designAlert)
+                    }
+                    .buttonStyle(.plain)
+                    .cmResetTransition()
+                }
+                Spacer()
+                NumericField(value: $systemConfig.gelatinMixtureOveragePercent, decimals: 1)
+                    .multilineTextAlignment(.trailing).frame(width: 50)
+                Text("%").font(.subheadline).foregroundStyle(CMTheme.textSecondary)
+            }.cmSettingsRowPadding()
+            Text("Extra gelatin mixture to prepare in case of spills. Shown as a separate column in Batch Output — does not affect the main batch calculation.")
+                .cmFootnote().padding(.horizontal, 16).padding(.bottom, 10)
+
+            Divider().padding(.horizontal, 16).padding(.vertical, 4)
+
             // Sugar Mixture Overage
             HStack {
                 Text("Sugar Mixture Overage").font(.body)
-                if systemConfig.sugarMixtureOveragePercent != 5.0 {
+                if systemConfig.sugarMixtureOveragePercent != 15.0 {
                     Button {
                         CMHaptic.light()
-                        withAnimation(.cmSpring) { systemConfig.sugarMixtureOveragePercent = 5.0 }
+                        withAnimation(.cmSpring) { systemConfig.sugarMixtureOveragePercent = 15.0 }
                     } label: {
                         Image(systemName: "arrow.counterclockwise.circle")
                             .cmResetIcon(color: systemConfig.designAlert)
@@ -2107,13 +2175,8 @@ struct SettingsView: View {
                         systemConfig.developerMode = newValue
                         if newValue {
                             systemConfig.expandDetailSectionsByDefault = true
-                            systemConfig.syntheticMeasurementsEnabled = true
-                            systemConfig.syntheticDataSet1Enabled = true
-                            systemConfig.syntheticDataSet2Enabled = true
                             withAnimation(.cmSpring) {
-                                systemConfig.applyDevMode(to: viewModel)
-                                systemConfig.applySyntheticMeasurements(to: viewModel)
-                                systemConfig.applySyntheticDataSet2(to: viewModel)
+                                systemConfig.applySelectedDevModeDataset(to: viewModel)
                             }
                         } else {
                             withAnimation(.cmSpring) {
@@ -2134,6 +2197,33 @@ struct SettingsView: View {
             if systemConfig.developerMode {
                 Divider().padding(.horizontal, 16)
                 HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Testing Input").font(.body)
+                        Text("Batch \(systemConfig.selectedDevModeDataset.batchID) — \(systemConfig.selectedDevModeDataset.subtitle)")
+                            .cmFootnote()
+                    }
+                    Spacer()
+                    Picker("", selection: Binding(
+                        get: { systemConfig.selectedDevModeDataset },
+                        set: { newValue in
+                            CMHaptic.medium()
+                            systemConfig.selectedDevModeDataset = newValue
+                            withAnimation(.cmSpring) {
+                                systemConfig.applySelectedDevModeDataset(to: viewModel)
+                            }
+                        }
+                    )) {
+                        ForEach(SystemConfig.DevModeDataset.allCases) { dataset in
+                            Text(dataset.rawValue).tag(dataset)
+                        }
+                    }
+                    .labelsHidden()
+                }
+                .cmSettingsRowPadding()
+                .cmExpandTransition()
+
+                Divider().padding(.horizontal, 16)
+                HStack {
                     Text("Expand sections by default").font(.body)
                     Spacer()
                     Toggle("", isOn: $systemConfig.expandDetailSectionsByDefault)
@@ -2145,7 +2235,7 @@ struct SettingsView: View {
                 Divider().padding(.horizontal, 16)
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Batch Measurements").font(.body)
+                        Text("Tray Measurements").font(.body)
                         Text("Fill measurement fields with real Tropical Punch data")
                             .cmFootnote()
                     }

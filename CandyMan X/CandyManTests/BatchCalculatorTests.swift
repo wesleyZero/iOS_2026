@@ -133,24 +133,39 @@ struct BatchCalculatorTests {
         #expect(abs(passionfruit!.volumeML - vTerpTotal * 0.30) < 0.0001)
     }
 
-    @Test func tropicalPunchActivationWater() {
+    @Test func tropicalPunchSolutionWaterInComponents() {
         let result = tropicalPunchResult()
         let config = TestFixtures.makeDefaultSystemConfig()
 
-        let water = result.activationMix.components.first { $0.label == "Activation Water" }
-        #expect(water != nil)
+        // Preservative substance volumes are pure (no solution water baked in)
+        let citric = result.activationMix.components.first { $0.label == "Citric Acid" }
+        let sorbate = result.activationMix.components.first { $0.label == "Potassium Sorbate" }
+        #expect(citric != nil)
+        #expect(sorbate != nil)
 
-        // Activation water = solubility water for citric + sorbate + additional (0)
         let vCitric = (config.citricAcidPercent / 100.0) * result.vMix
         let mCitric = vCitric * config.densityCitricAcid
         let vSorbate = (config.potassiumSorbatePercent / 100.0) * result.vMix
         let mSorbate = vSorbate * config.densityPotassiumSorbate
 
-        let waterForCitric = SubstanceSolubility.citricAcid.minWaterML(toDissolveGrams: mCitric)
-        let waterForSorbate = SubstanceSolubility.potassiumSorbate.minWaterML(toDissolveGrams: mSorbate)
-        let expectedWater = waterForCitric + waterForSorbate + 0.0
+        #expect(abs(citric!.volumeML - vCitric) < 0.001)
+        #expect(abs(sorbate!.volumeML - vSorbate) < 0.001)
 
-        #expect(abs(water!.volumeML - expectedWater) < 0.001)
+        // Solution water tracked as separate components with correct mass and volume
+        let caWater = result.activationMix.components.first { $0.label == "CA Solution Water" }
+        let ksWater = result.activationMix.components.first { $0.label == "KS Solution Water" }
+        #expect(caWater != nil)
+        #expect(ksWater != nil)
+
+        let mWaterCitric = mCitric * config.citricAcidSolutionRatio
+        let vWaterCitric = mWaterCitric / config.densityWater
+        #expect(abs(caWater!.massGrams - mWaterCitric) < 0.001)
+        #expect(abs(caWater!.volumeML - vWaterCitric) < 0.001)
+
+        let mWaterSorbate = mSorbate * config.kSorbateSolutionRatio
+        let vWaterSorbate = mWaterSorbate / config.densityWater
+        #expect(abs(ksWater!.massGrams - mWaterSorbate) < 0.001)
+        #expect(abs(ksWater!.volumeML - vWaterSorbate) < 0.001)
     }
 
     // MARK: - Gelatin Mix
@@ -268,7 +283,7 @@ struct BatchCalculatorTests {
         vm.overageFactor = 1.03
         vm.selectedFlavors = [:]
         vm.selectedColors = [:]
-        vm.colorVolumePercent = 0.581
+        vm.colorVolumePercent = 0.350
         vm.flavorOilVolumePercent = 0.481
         vm.terpeneVolumePPM = 219.9
 
@@ -277,8 +292,8 @@ struct BatchCalculatorTests {
 
         // Should still calculate with just preservatives + water
         #expect(result.vMix > 0)
-        // Activation mix: citric acid + potassium sorbate + activation water = 3 components
-        #expect(result.activationMix.components.count == 3)
+        // Activation mix: citric acid + CA water + potassium sorbate + KS water + LSD transfer water = 5
+        #expect(result.activationMix.components.count == 5)
     }
 
     @Test func edgeCaseExtraGummiesOnly() {
@@ -293,13 +308,4 @@ struct BatchCalculatorTests {
         #expect(abs(result.vBase - expectedVBase) < 0.001)
     }
 
-    @Test func preservativeWaterCalculation() {
-        let config = TestFixtures.makeDefaultSystemConfig()
-
-        // Verify SubstanceSolubility formula
-        let mass = 1.0 // 1 gram
-        let water = SubstanceSolubility.citricAcid.minWaterML(toDissolveGrams: mass)
-        // 59 g / 100 mL → 1g needs (1/59)*100 = 1.6949 mL
-        #expect(abs(water - (1.0 / 59.0) * 100.0) < 0.001)
-    }
 }
